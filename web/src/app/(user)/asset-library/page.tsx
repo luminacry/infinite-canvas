@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { App, Button, Card, Drawer, Empty, Image, Input, Pagination, Spin, Tag, Typography } from "antd";
 import axios from "axios";
+import copy from "copy-to-clipboard";
 
 import { cn } from "@/lib/utils";
 import { useAssetStore } from "@/stores/use-asset-store";
@@ -77,7 +78,7 @@ export default function AssetLibraryPage() {
   };
 
   const copyText = async (value: string) => {
-    await navigator.clipboard.writeText(value);
+    copy(value);
     message.success("已复制");
   };
 

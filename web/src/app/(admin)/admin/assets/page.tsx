@@ -4,6 +4,7 @@ import { CopyOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, 
 import { ProTable, type ProColumns } from "@ant-design/pro-components";
 import { App, Button, Card, Col, Flex, Form, Image, Input, Modal, Row, Select, Space, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
+import copy from "copy-to-clipboard";
 
 import type { AdminAsset } from "@/services/api/admin";
 import { useAdminAssets } from "../hooks/use-admin-assets";
@@ -33,7 +34,7 @@ export default function AdminAssetsPage() {
   }, [editingAsset, form]);
 
   const copyValue = async (value: string) => {
-    await navigator.clipboard.writeText(value);
+    copy(value);
     message.success("已复制");
   };
 

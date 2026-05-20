@@ -3,6 +3,7 @@
 import { FolderPlus, Search } from "lucide-react";
 import { type UIEvent, useEffect, useState } from "react";
 import { App, Button, Empty, Input, Spin, Tag } from "antd";
+import copy from "copy-to-clipboard";
 
 import { PromptCard } from "@/components/prompts/prompt-card";
 import { PromptDetailDialog } from "@/components/prompts/prompt-detail-dialog";
@@ -32,7 +33,7 @@ export default function PromptsPage() {
   };
 
   const copyPrompt = async (prompt: string) => {
-    await navigator.clipboard.writeText(prompt);
+    copy(prompt);
     message.success("提示词已复制");
   };
 

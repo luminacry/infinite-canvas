@@ -3,6 +3,7 @@
 import { Copy, Download, PencilLine, Search, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Card, Drawer, Empty, Form, Image, Input, Modal, Pagination, Select, Space, Tag, Typography } from "antd";
+import copy from "copy-to-clipboard";
 
 import { formatBytes, readFileAsDataUrl } from "@/lib/image-utils";
 import { uploadImage } from "@/services/image-storage";
@@ -139,7 +140,7 @@ export default function AssetsPage() {
 
   const copyText = async (asset: Asset) => {
     if (asset.kind !== "text") return;
-    await navigator.clipboard.writeText(asset.data.content);
+    copy(asset.data.content);
     message.success("文本已复制");
   };
 

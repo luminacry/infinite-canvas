@@ -4,6 +4,7 @@ import { CopyOutlined, DeleteOutlined, EditOutlined, ExportOutlined, EyeOutlined
 import { ProTable, type ProColumns } from "@ant-design/pro-components";
 import { App, Button, Card, Col, Flex, Form, Image, Input, Modal, Row, Select, Space, Table, Tag, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
+import copy from "copy-to-clipboard";
 
 import type { Prompt } from "@/services/api/prompts";
 import { useAdminPrompts } from "../hooks/use-admin-prompts";
@@ -26,7 +27,7 @@ export default function AdminPromptsPage() {
   }, [editingPrompt, form]);
 
   const copyPrompt = async (value: string) => {
-    await navigator.clipboard.writeText(value);
+    copy(value);
     message.success("已复制");
   };
 
