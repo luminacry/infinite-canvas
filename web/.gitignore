@@ -1,0 +1,4 @@
+.env
+.pgdata/
+.localstore/
+package-lock.json

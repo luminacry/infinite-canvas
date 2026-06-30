@@ -5,7 +5,7 @@ import { AppError } from "../errors";
 import { charge, refund } from "./credit-service";
 import { resolveModel } from "./pricing-service";
 import { putObject, signedGetUrl, objectKey } from "../r2";
-import { generateImageOpenAI } from "../ai/openai-image";
+import { generateImageOpenAI, editImageOpenAI } from "../ai/openai-image";
 import { resolveSizeTierFromInput, type SizeTier } from "@/lib/size-tier";
 
 export type ImageRequest = {
@@ -14,7 +14,33 @@ export type ImageRequest = {
     size?: string;
     quality?: string;
     count?: number;
+    mode?: "generation" | "edit";
+    references?: string[]; // dataUrl 或 http(s) url
+    mask?: string;
 };
+
+/**
+ * 兜底对账：把超时仍 pending 的生成记录退点并标记失败。
+ * 处理「上游极慢 / 客户端断开 / 进程重启」导致预扣未结算的孤儿记录。应由定时任务周期调用。
+ */
+export async function reconcilePending(maxAgeMs = 10 * 60_000): Promise<number> {
+    const cutoff = new Date(Date.now() - maxAgeMs);
+    const stuck = await db.generationRecord.findMany({ where: { status: "pending", createdAt: { lt: cutoff } }, select: { id: true, userId: true, creditsHeld: true } });
+    for (const rec of stuck) {
+        if (rec.creditsHeld > 0) await refund(rec.userId, rec.creditsHeld, { refType: "generation", refId: rec.id, remark: "超时未完成，自动退点" });
+        await db.generationRecord.update({ where: { id: rec.id }, data: { status: "failed", errorMsg: "超时未完成，已退点" } });
+    }
+    return stuck.length;
+}
+
+/** 把 dataUrl 或远程 url 解析为字节。 */
+async function fetchBytes(src: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    const m = src.match(/^data:([^;,]+);base64,(.+)$/);
+    if (m) return { buffer: Buffer.from(m[2], "base64"), mimeType: m[1] };
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`参考图获取失败 ${res.status}`);
+    return { buffer: Buffer.from(await res.arrayBuffer()), mimeType: res.headers.get("content-type") || "image/png" };
+}
 
 export type GenImageResult = {
     recordId: string;
@@ -59,7 +85,16 @@ export async function generateImage(userId: string, req: ImageRequest): Promise<
 
     // 调上游 + 落库；任何失败都退点
     try {
-        const result = await generateImageOpenAI(channel, { model: req.model, prompt: req.prompt, size: req.size, quality: req.quality, count });
+        const genInput = { model: req.model, prompt: req.prompt, size: req.size, quality: req.quality, count };
+        const result =
+            req.mode === "edit" && req.references?.length
+                ? await editImageOpenAI(
+                      channel,
+                      genInput,
+                      await Promise.all(req.references.map(fetchBytes)),
+                      req.mask ? await fetchBytes(req.mask) : undefined,
+                  )
+                : await generateImageOpenAI(channel, genInput);
         const outputs = await Promise.all(
             result.images.map(async (img, i) => {
                 const ext = EXT_BY_MIME[img.mimeType] || "png";
