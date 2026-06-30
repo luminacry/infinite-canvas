@@ -18,12 +18,15 @@ const store = localforage.createInstance({ name: "infinite-canvas", storeName: "
 const objectUrls = new Map<string, string>();
 
 export async function uploadImage(input: string | Blob): Promise<UploadedImage> {
-    const blob = typeof input === "string" ? await (await fetch(input)).blob() : input;
+    // 远程/平台 URL（http(s) 或 / 开头，且非 data:）作为持久 content：刷新后即便本地 blob 丢失，也能从服务端加载。
+    const isRemote = typeof input === "string" && /^(https?:\/\/|\/)/.test(input) && !input.startsWith("data:");
+    const blob = typeof input === "string" ? await (await fetch(input, { credentials: "include" })).blob() : input;
     const storageKey = `image:${nanoid()}`;
     await store.setItem(storageKey, blob);
-    const url = URL.createObjectURL(blob);
-    objectUrls.set(storageKey, url);
-    const meta = await readImageMeta(url);
+    const objectUrl = URL.createObjectURL(blob);
+    objectUrls.set(storageKey, objectUrl);
+    const meta = await readImageMeta(objectUrl);
+    const url = isRemote ? (input as string) : objectUrl;
     return { url, storageKey, width: meta.width, height: meta.height, bytes: blob.size, mimeType: blob.type || meta.mimeType };
 }
 
