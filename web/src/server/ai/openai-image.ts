@@ -44,3 +44,43 @@ export async function generateImageOpenAI(channel: UpstreamChannel, input: Image
     if (!images.length) throw new AppError("上游没有返回图片");
     return { images, upstreamId: payload.id };
 }
+
+function parseImagePayload(payload: { id?: string; data?: Array<{ b64_json?: string; url?: string }>; error?: { message?: string } }): ImageGenResult {
+    if (payload.error?.message) throw new AppError(payload.error.message);
+    const images = (payload.data ?? [])
+        .map((item) => (item.b64_json ? { buffer: Buffer.from(item.b64_json, "base64"), mimeType: "image/png" } : null))
+        .filter((x): x is { buffer: Buffer; mimeType: string } => Boolean(x));
+    if (!images.length) throw new AppError("上游没有返回图片");
+    return { images, upstreamId: payload.id };
+}
+
+/** OpenAI 兼容 /images/edits（图生图 / 局部蒙版编辑）。references/mask 为原始字节。 */
+export async function editImageOpenAI(
+    channel: UpstreamChannel,
+    input: ImageGenInput,
+    references: { buffer: Buffer; mimeType: string }[],
+    mask: { buffer: Buffer; mimeType: string } | undefined,
+    signal?: AbortSignal,
+): Promise<ImageGenResult> {
+    const form = new FormData();
+    form.set("model", input.model);
+    form.set("prompt", input.prompt);
+    form.set("n", String(input.count));
+    form.set("response_format", "b64_json");
+    if (input.size) form.set("size", input.size);
+    if (input.quality) form.set("quality", input.quality);
+    references.forEach((ref, i) => form.append("image", new Blob([new Uint8Array(ref.buffer)], { type: ref.mimeType }), `image_${i}.png`));
+    if (mask) form.set("mask", new Blob([new Uint8Array(mask.buffer)], { type: mask.mimeType }), "mask.png");
+
+    const res = await fetch(joinUrl(channel.baseUrl, "/images/edits"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${channel.apiKey}` },
+        body: form,
+        signal,
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new AppError(`上游编辑接口返回 ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
+    }
+    return parseImagePayload(await res.json());
+}

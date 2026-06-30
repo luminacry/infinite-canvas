@@ -387,10 +387,12 @@ function consumeResponseStreamText(state: ResponseStreamState, text: string, onD
 }
 
 async function requestStreamingResponse(config: AiConfig, body: Record<string, unknown>, onDelta?: (text: string) => void, options?: RequestOptions): Promise<ToolResponseResult> {
-    const response = await fetch(aiApiUrl(config, "/responses"), {
+    // 文本同样改走平台代理（独立的 text 渠道，服务端持 Key、扣算力点），SSE 原样透传给现有解析器。
+    const response = await fetch("/api/generate/text", {
         method: "POST",
-        headers: { ...aiHeaders(config, "application/json"), Accept: "text/event-stream" },
-        body: JSON.stringify({ ...body, stream: true }),
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({ model: body.model, payload: { ...body, stream: true } }),
         signal: options?.signal,
     });
     if (!response.ok) throw new Error(await readFetchError(response, "请求失败"));
@@ -607,79 +609,57 @@ function parseGeminiImagePayload(payload: GeminiPayload) {
     return images;
 }
 
+// ── 平台代理：生成请求改走自家后端（服务端持 Key、扣算力点），前端不再直连上游 ──
+// 取裸模型名（去掉 "channelId::" 前缀），对应后端 ModelPricing.model。
+function bareModelName(config: AiConfig) {
+    return (config.model || config.imageModel || "").split("::").pop() || "";
+}
+
+async function blobUrlToDataUrl(url: string, signal?: AbortSignal): Promise<string> {
+    const res = await fetch(url, { credentials: "include", signal });
+    if (!res.ok) throw new Error("生成结果获取失败");
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("生成结果解析失败"));
+        reader.readAsDataURL(blob);
+    });
+}
+
+type ProxyImageBody = { mode: "generation" | "edit"; model: string; prompt: string; size?: string; quality?: string; count: number; references?: string[]; mask?: string };
+
+async function requestProxyImages(body: ProxyImageBody, options?: RequestOptions): Promise<{ id: string; dataUrl: string }[]> {
+    const res = await fetch("/api/generate/image", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: options?.signal,
+    });
+    const payload = (await res.json().catch(() => null)) as { code?: number; data?: { images?: { id: string; url: string }[] }; msg?: string } | null;
+    if (!payload) throw new Error("服务器无响应");
+    if (payload.code !== 0 || !payload.data) throw new Error(payload.msg || "生成失败");
+    const images = payload.data.images ?? [];
+    if (!images.length) throw new Error("接口没有返回图片");
+    return Promise.all(images.map(async (img) => ({ id: img.id, dataUrl: await blobUrlToDataUrl(img.url, options?.signal) })));
+}
+
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
-    const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
-    if (requestConfig.apiFormat === "gemini") {
-        try {
-            return await requestGeminiImages(requestConfig, prompt, [], n, options);
-        } catch (error) {
-            throw new Error(readAxiosError(error, "请求失败"));
-        }
-    }
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
-    try {
-        const response = await axios.post<ImageApiResponse>(
-            aiApiUrl(requestConfig, "/images/generations"),
-            {
-                model: requestConfig.model,
-                prompt: withSystemPrompt(requestConfig, prompt),
-                n,
-                ...(quality ? { quality } : {}),
-                ...(requestSize ? { size: requestSize } : {}),
-                response_format: "b64_json",
-                output_format: IMAGE_OUTPUT_FORMAT,
-            },
-            {
-                headers: aiHeaders(requestConfig, "application/json"),
-                signal: options?.signal,
-            },
-        );
-        const images = parseImagePayload(response.data);
-        return images;
-    } catch (error) {
-        throw new Error(readAxiosError(error, "请求失败"));
-    }
+    return requestProxyImages({ mode: "generation", model: bareModelName(config), prompt: withSystemPrompt(config, prompt), size: config.size, quality: config.quality, count: n }, options);
 }
 
 export async function requestEdit(config: AiConfig, prompt: string, references: ReferenceImage[], mask?: ReferenceImage, options?: RequestOptions) {
-    const requestConfig = resolveModelRequestConfig(config, config.model || config.imageModel);
     const n = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
     const requestPrompt = buildImageReferencePromptText(prompt, references);
-    if (requestConfig.apiFormat === "gemini") {
-        if (mask) throw new Error("Gemini 调用格式暂不支持蒙版编辑");
-        try {
-            return await requestGeminiImages(requestConfig, requestPrompt, references, n, options);
-        } catch (error) {
-            throw new Error(readAxiosError(error, "请求失败"));
-        }
-    }
-    const quality = normalizeQuality(config.quality);
-    const requestSize = resolveRequestSize(quality, config.size);
-    const formData = new FormData();
-    formData.set("model", requestConfig.model);
-    formData.set("prompt", withSystemPrompt(requestConfig, requestPrompt));
-    formData.set("n", String(n));
-    formData.set("response_format", "b64_json");
-    formData.set("output_format", IMAGE_OUTPUT_FORMAT);
-    if (quality) {
-        formData.set("quality", quality);
-    }
-    if (requestSize) {
-        formData.set("size", requestSize);
-    }
-    const files = await Promise.all(references.map(async (image) => dataUrlToFile({ ...image, dataUrl: await imageToDataUrl(image) })));
-    files.forEach((file) => formData.append("image", file));
-    if (mask) formData.set("mask", dataUrlToFile(mask));
-
-    try {
-        const response = await axios.post<ImageApiResponse>(aiApiUrl(requestConfig, "/images/edits"), formData, { headers: aiHeaders(requestConfig), signal: options?.signal });
-        const images = parseImagePayload(response.data);
-        return images;
-    } catch (error) {
-        throw new Error(readAxiosError(error, "请求失败"));
-    }
+    // 参考图/蒙版在前端解析成 dataUrl 后交给代理（服务端再解码上传上游）
+    const refDataUrls = await Promise.all(references.map((image) => imageToDataUrl(image)));
+    const maskDataUrl = mask ? mask.dataUrl : undefined;
+    return requestProxyImages(
+        { mode: "edit", model: bareModelName(config), prompt: withSystemPrompt(config, requestPrompt), size: config.size, quality: config.quality, count: n, references: refDataUrls, mask: maskDataUrl },
+        options,
+    );
 }
 
 export async function requestImageQuestion(config: AiConfig, messages: AiTextMessage[], onDelta: (text: string) => void, options?: RequestOptions) {

@@ -14,14 +14,14 @@ export async function POST(req: NextRequest) {
         if (!(await rateLimit(`gen:${user.id}`, 20, 60))) return fail("生成过于频繁，请稍后再试", 429, 429);
 
         const body = await req.json();
-        const { model, prompt, size, quality, count, idempotencyKey } = body ?? {};
+        const { model, prompt, size, quality, count, mode, references, mask, idempotencyKey } = body ?? {};
         if (!model || !prompt) return fail("缺少模型或提示词");
 
         // 幂等：同一 key 在处理期间加锁，防双击/重试导致重复扣费
         const lockKey = idempotencyKey ? `idem:${user.id}:${idempotencyKey}` : "";
         if (lockKey && !(await acquireLock(lockKey, 300_000))) return fail("请求正在处理中，请勿重复提交", 409, 409);
         try {
-            const result = await generateImage(user.id, { model, prompt, size, quality, count });
+            const result = await generateImage(user.id, { model, prompt, size, quality, count, mode, references, mask });
             return ok(result);
         } finally {
             if (lockKey) await releaseLock(lockKey);
