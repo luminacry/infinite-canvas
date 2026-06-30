@@ -615,18 +615,6 @@ function bareModelName(config: AiConfig) {
     return (config.model || config.imageModel || "").split("::").pop() || "";
 }
 
-async function blobUrlToDataUrl(url: string, signal?: AbortSignal): Promise<string> {
-    const res = await fetch(url, { credentials: "include", signal });
-    if (!res.ok) throw new Error("生成结果获取失败");
-    const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error("生成结果解析失败"));
-        reader.readAsDataURL(blob);
-    });
-}
-
 type ProxyImageBody = { mode: "generation" | "edit"; model: string; prompt: string; size?: string; quality?: string; count: number; references?: string[]; mask?: string };
 
 async function requestProxyImages(body: ProxyImageBody, options?: RequestOptions): Promise<{ id: string; dataUrl: string }[]> {
@@ -642,7 +630,8 @@ async function requestProxyImages(body: ProxyImageBody, options?: RequestOptions
     if (payload.code !== 0 || !payload.data) throw new Error(payload.msg || "生成失败");
     const images = payload.data.images ?? [];
     if (!images.length) throw new Error("接口没有返回图片");
-    return Promise.all(images.map(async (img) => ({ id: img.id, dataUrl: await blobUrlToDataUrl(img.url, options?.signal) })));
+    // 返回服务端持久 URL（落库到画布节点 content，刷新后可直接从服务端加载）。
+    return images.map((img) => ({ id: img.id, dataUrl: img.url }));
 }
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {
