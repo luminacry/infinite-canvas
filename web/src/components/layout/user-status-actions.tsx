@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { BookOpen, Keyboard, Settings2 } from "lucide-react";
 
 import { AnimatedThemeToggler } from "@/components/ui/animated-theme-toggler";
+import { AccountMenu } from "@/components/layout/account-menu";
 import { GitHubLink } from "@/components/layout/github-link";
 import { VersionReleaseModal } from "@/components/layout/version-release-modal";
 import { DOCS_URL } from "@/constant/env";
@@ -47,6 +48,7 @@ export function UserStatusActions({ showConfig = true, variant = "default", onOp
                     <Keyboard className="size-4" />
                 </button>
             ) : null}
+            <AccountMenu />
         </div>
     );
 }
