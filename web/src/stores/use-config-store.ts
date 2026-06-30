@@ -164,9 +164,9 @@ function modelListKey(capability: ModelCapability) {
     return `${capability}Models` as "imageModels" | "videoModels" | "textModels" | "audioModels";
 }
 
-function isAiConfigReady(config: AiConfig, model: string) {
-    const channel = resolveModelChannel(config, model);
-    return Boolean(model.trim() && channel.baseUrl.trim() && channel.apiKey.trim());
+function isAiConfigReady(_config: AiConfig, model: string) {
+    // 平台托管模式：Key/上游由服务端持有，前端只要选了模型即视为可用。
+    return Boolean(model.trim());
 }
 
 export const useConfigStore = create<ConfigStore>()(
