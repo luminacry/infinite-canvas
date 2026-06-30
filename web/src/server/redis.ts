@@ -6,7 +6,14 @@ import Redis from "ioredis";
 const rawUrl = process.env.REDIS_URL?.trim();
 const useMemory = !rawUrl || rawUrl === "memory";
 
-type Limiter = { rateLimit(key: string, limit: number, windowSec: number): Promise<boolean>; acquireLock(key: string, ttlMs: number): Promise<boolean>; releaseLock(key: string): Promise<void> };
+type Limiter = {
+    rateLimit(key: string, limit: number, windowSec: number): Promise<boolean>;
+    acquireLock(key: string, ttlMs: number): Promise<boolean>;
+    releaseLock(key: string): Promise<void>;
+    cacheGet(key: string): Promise<string | null>;
+    cacheSet(key: string, value: string, ttlSec: number): Promise<void>;
+    cacheDel(key: string): Promise<void>;
+};
 
 function createRedisLimiter(): Limiter {
     const g = globalThis as unknown as { redis?: Redis };
@@ -24,13 +31,23 @@ function createRedisLimiter(): Limiter {
         async releaseLock(key) {
             await redis.del(`lock:${key}`);
         },
+        async cacheGet(key) {
+            return redis.get(`cache:${key}`);
+        },
+        async cacheSet(key, value, ttlSec) {
+            await redis.set(`cache:${key}`, value, "EX", ttlSec);
+        },
+        async cacheDel(key) {
+            await redis.del(`cache:${key}`);
+        },
     };
 }
 
 function createMemoryLimiter(): Limiter {
-    const g = globalThis as unknown as { memCounters?: Map<string, { n: number; exp: number }>; memLocks?: Map<string, number> };
+    const g = globalThis as unknown as { memCounters?: Map<string, { n: number; exp: number }>; memLocks?: Map<string, number>; memCache?: Map<string, { v: string; exp: number }> };
     const counters = (g.memCounters ??= new Map());
     const locks = (g.memLocks ??= new Map());
+    const cache = (g.memCache ??= new Map());
     const now = () => Date.now();
     return {
         async rateLimit(key, limit, windowSec) {
@@ -52,6 +69,20 @@ function createMemoryLimiter(): Limiter {
         async releaseLock(key) {
             locks.delete(key);
         },
+        async cacheGet(key) {
+            const e = cache.get(key);
+            if (!e || e.exp < now()) {
+                cache.delete(key);
+                return null;
+            }
+            return e.v;
+        },
+        async cacheSet(key, value, ttlSec) {
+            cache.set(key, { v: value, exp: now() + ttlSec * 1000 });
+        },
+        async cacheDel(key) {
+            cache.delete(key);
+        },
     };
 }
 
@@ -60,3 +91,6 @@ const limiter = useMemory ? createMemoryLimiter() : createRedisLimiter();
 export const rateLimit = limiter.rateLimit;
 export const acquireLock = (key: string, ttlMs = 5000) => limiter.acquireLock(key, ttlMs);
 export const releaseLock = limiter.releaseLock;
+export const cacheGet = limiter.cacheGet;
+export const cacheSet = limiter.cacheSet;
+export const cacheDel = limiter.cacheDel;

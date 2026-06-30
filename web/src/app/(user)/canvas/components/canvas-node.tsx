@@ -353,10 +353,15 @@ const nodeContentRenderers = {
 } satisfies Record<CanvasNodeType, (props: NodeContentRendererProps) => ReactNode>;
 
 function LoadingContent({ theme }: Pick<NodeContentRendererProps, "theme">) {
+    const [seconds, setSeconds] = useState(0);
+    useEffect(() => {
+        const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+        return () => clearInterval(t);
+    }, []);
     return (
         <div className="flex h-full w-full flex-col items-center justify-center gap-3" style={{ color: theme.node.activeStroke }}>
             <div className="size-10 animate-spin rounded-full border-2" style={{ borderColor: theme.node.stroke, borderTopColor: theme.node.activeStroke }} />
-            <span className="text-[10px] tracking-[0.2em]">生成中</span>
+            <span className="text-[10px] tracking-[0.2em]">生成中 {seconds}s</span>
         </div>
     );
 }
