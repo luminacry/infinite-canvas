@@ -27,7 +27,7 @@
 | 登录 | 首发仅邮箱 + 密码；OAuth 延后 | 最小可用 |
 | 计费 | 图片按分辨率档 1k/2k/4k；文本按次（standard） | 与现有 quality 体系对齐 |
 | 收款 | 兑换码 | 省支付网关与大部分合规 |
-| 文本/图片 | **分渠道**（capability 维度解析） | 图片提供商常不支持文本，反之亦然（实测 iigpt 仅图片、huablog 有文本） |
+| 文本/图片 | **分渠道**（capability 维度解析） | 图片提供商常不支持文本，反之亦然（实测某图片提供商仅支持图片、文本需另一提供商） |
 
 ---
 
@@ -38,9 +38,9 @@
 3. 补充决策：R2、仅邮箱密码、按像素档计费。
 4. 实现 **M0–M5**（账号/算力点/兑换码/AI图片代理/个人中心/管理后台）。
 5. 本地把应用真正跑起来（userland Node 20 + embedded-postgres + 内存 Redis + 本地存储回退），端到端实测通过。
-6. 接入真实图片渠道「渠道1」(iigpt)，画布生成接入平台代理（改 `services/api/image.ts` 内部，画布文件零改动）。
+6. 接入真实图片渠道「渠道1」，画布生成接入平台代理（改 `services/api/image.ts` 内部，画布文件零改动）。
 7. 修复「画布生成图刷新后空白」（节点 content 改存服务端持久 URL）。
-8. 加文本渠道「渠道2」(huablog)，实现文本流式代理（/chat/completions → 转成前端 SSE 格式）。
+8. 加文本渠道「渠道2」，实现文本流式代理（/chat/completions → 转成前端 SSE 格式）。
 9. 去掉 BYOK 配置入口、模型改读 `/api/models`、关闭"请配置渠道"弹窗。
 10. 生成后余额实时刷新。
 11. 一批优化：生产构建切换、会话缓存、进度反馈、对账 cron。
@@ -147,7 +147,7 @@ set -a; source .env; set +a; PORT=3000 HOSTNAME=0.0.0.0 NODE_ENV=production node
 1. **生产模式无热重载**：改代码需 `npm run build` 重新构建并重启 standalone。
 2. **R2 预签名 1 小时过期**：生产务必配 `R2_PUBLIC_BASE`（公开域），否则持久回退 URL 会失效（本地 blob 仍是主路径）。
 3. **会话缓存 60s staleness**：封号/改角色最多 60s 后对在线会话生效（登出立即失效）。
-4. **图片 img2img 在某些上游不可用**（如 iigpt 的 `/images/edits` 返回 fetch failed）；text2img 正常。需用支持编辑的渠道。
+4. **图片 img2img 在某些上游不可用**（如某图片上游的 `/images/edits` 返回 fetch failed）；text2img 正常。需用支持编辑的渠道。
 5. **本地存储/数据库为开发态**：`.pgdata`、`.localstore`、`.env`、`package-lock.json` 均已 gitignore，不入库。
 6. **AGENTS.md 的「后端规范（Go）」章节是历史遗留**，本次后端是 TypeScript。
 7. **法律合规**：预付算力点 + 兑换码在国内涉灰区，上线前请咨询法务（规划文档非法律意见）。
