@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import { dataUrlToFile } from "@/lib/image-utils";
 import { buildImageReferencePromptText } from "@/lib/image-reference-prompt";
 import { imageToDataUrl } from "@/services/image-storage";
+import { useAuthStore } from "@/stores/use-auth-store";
 import type { ReferenceImage } from "@/types/image";
 
 export type AiTextMessage = {
@@ -396,6 +397,7 @@ async function requestStreamingResponse(config: AiConfig, body: Record<string, u
         signal: options?.signal,
     });
     if (!response.ok) throw new Error(await readFetchError(response, "请求失败"));
+    void refreshBalanceSoon(); // 文本扣费后异步同步顶栏余额
     if (!response.body) {
         const payload = (await response.json()) as ResponseApiPayload;
         validateResponsePayload(payload);
@@ -615,6 +617,17 @@ function bareModelName(config: AiConfig) {
     return (config.model || config.imageModel || "").split("::").pop() || "";
 }
 
+// 文本走 SSE，余额不在响应体里；完成后异步拉一次余额同步顶栏（fire-and-forget）。
+async function refreshBalanceSoon() {
+    try {
+        const res = await fetch("/api/credits/balance", { credentials: "include" });
+        const json = (await res.json()) as { code: number; data?: { balance: number } };
+        if (json.code === 0 && json.data) useAuthStore.getState().setBalance(json.data.balance);
+    } catch {
+        // 忽略
+    }
+}
+
 type ProxyImageBody = { mode: "generation" | "edit"; model: string; prompt: string; size?: string; quality?: string; count: number; references?: string[]; mask?: string };
 
 async function requestProxyImages(body: ProxyImageBody, options?: RequestOptions): Promise<{ id: string; dataUrl: string }[]> {
@@ -625,9 +638,11 @@ async function requestProxyImages(body: ProxyImageBody, options?: RequestOptions
         body: JSON.stringify(body),
         signal: options?.signal,
     });
-    const payload = (await res.json().catch(() => null)) as { code?: number; data?: { images?: { id: string; url: string }[] }; msg?: string } | null;
+    const payload = (await res.json().catch(() => null)) as { code?: number; data?: { images?: { id: string; url: string }[]; balance?: number }; msg?: string } | null;
     if (!payload) throw new Error("服务器无响应");
     if (payload.code !== 0 || !payload.data) throw new Error(payload.msg || "生成失败");
+    // 扣费后实时同步顶栏余额，无需刷新页面
+    if (typeof payload.data.balance === "number") useAuthStore.getState().setBalance(payload.data.balance);
     const images = payload.data.images ?? [];
     if (!images.length) throw new Error("接口没有返回图片");
     // 返回服务端持久 URL（落库到画布节点 content，刷新后可直接从服务端加载）。
