@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Spin } from "antd";
 
 import { useAuthStore } from "@/stores/use-auth-store";
+import { usePlatformModels } from "@/hooks/use-platform-models";
 
 /** 应用入口鉴权：首次挂载探测登录态，未登录跳 /login（带 redirect 回跳）。 */
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     const user = useAuthStore((s) => s.user);
     const ready = useAuthStore((s) => s.ready);
     const fetchMe = useAuthStore((s) => s.fetchMe);
+
+    // 登录后加载平台模型，填充模型选择器（平台托管，无需用户配 Key）
+    usePlatformModels(Boolean(user));
 
     useEffect(() => {
         if (!ready) fetchMe();
