@@ -1,7 +1,8 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import { ConfigProvider, Switch } from "antd";
+import { ConfigProvider } from "antd";
+import { Switch } from "@/components/ui/switch";
 
 import { type CanvasTheme } from "@/lib/canvas-theme";
 import type { AiConfig } from "@/stores/use-config-store";
@@ -88,7 +89,7 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
                                 16倍数对齐
                             </span>
                             <span title="输入完成后自动向上补成 16 的倍数" onMouseDown={(event) => event.stopPropagation()}>
-                                <Switch size="small" checked={snapDimensionToStep} onChange={setSnapDimensionToStep} />
+                                <Switch checked={snapDimensionToStep} onCheckedChange={setSnapDimensionToStep} />
                             </span>
                         </div>
                     </div>
