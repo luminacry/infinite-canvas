@@ -15,7 +15,17 @@ export type GenerationItem = {
 
 export type GalleryImage = { id: string; url: string; prompt: string; model: string; createdAt: string };
 
+export type AccountOverview = {
+    balance: number;
+    totalGenerations: number;
+    successCount: number;
+    failedCount: number;
+    successRate: number;
+    monthSpent: number;
+};
+
 export const meApi = {
+    overview: () => api.get<AccountOverview>("/api/me/overview"),
     generations: (page = 1, pageSize = 20, capability?: string) => {
         const sp = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
         if (capability) sp.set("capability", capability);

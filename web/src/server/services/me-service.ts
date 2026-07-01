@@ -35,6 +35,37 @@ export async function listGenerations(userId: string, page = 1, pageSize = 20, c
     return { items, total, page, pageSize };
 }
 
+/** 个人中心概览：累计生成数、成功/失败、成功率、本月消耗算力点。 */
+export async function getOverview(userId: string) {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [total, success, failed, monthSpentAgg, user] = await Promise.all([
+        db.generationRecord.count({ where: { userId } }),
+        db.generationRecord.count({ where: { userId, status: "success" } }),
+        db.generationRecord.count({ where: { userId, status: "failed" } }),
+        db.creditLedger.aggregate({
+            _sum: { delta: true },
+            where: { userId, reason: "generate", createdAt: { gte: monthStart } },
+        }),
+        db.user.findUnique({ where: { id: userId }, select: { creditBalance: true } }),
+    ]);
+
+    // generate 流水 delta 为负，取绝对值作为本月消耗
+    const monthSpent = Math.abs(monthSpentAgg._sum.delta ?? 0);
+    const successRate = total > 0 ? Math.round((success / total) * 100) : 0;
+
+    return {
+        balance: user?.creditBalance ?? 0,
+        totalGenerations: total,
+        successCount: success,
+        failedCount: failed,
+        successRate,
+        monthSpent,
+    };
+}
+
 /** 图库：仅成功的图片产物，铺平成图片列表。 */
 export async function listGallery(userId: string, page = 1, pageSize = 24) {
     const where: Prisma.GenerationRecordWhereInput = { userId, capability: "image", status: "success" };
