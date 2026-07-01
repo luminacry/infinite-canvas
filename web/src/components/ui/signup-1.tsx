@@ -29,29 +29,15 @@ interface Signup1Props {
   extraField?: ReactNode;
 }
 
-// Linear 设计系统精确 token（来源：项目根 DESIGN.md，linear.app）
-const linear = {
-  base: "rgb(8, 9, 10)", // 页面画布
-  card: "rgb(15, 16, 17)", // 卡片表面
-  chat: "rgb(22, 23, 24)", // 输入框（暗栈最高层）
-  textPrimary: "rgb(247, 248, 248)",
-  textSecondary: "rgb(208, 214, 224)",
-  textTertiary: "rgb(138, 143, 152)",
-  accent: "rgb(94, 106, 210)", // 签名靛蓝
-  border: "rgba(255, 255, 255, 0.08)", // 一像素月光
-  // 五层复合阴影（卡片抬升）
-  cardShadow:
-    "rgba(0,0,0,0) 0px 8px 2px, rgba(0,0,0,0.01) 0px 5px 2px, rgba(0,0,0,0.04) 0px 3px 2px, rgba(0,0,0,0.07) 0px 1px 1px, rgba(0,0,0,0.08) 0px 0px 1px",
-  featureSettings: '"cv01", "ss03"',
-} as const;
+// 明暗跟随全站主题（用语义色变量）；仅保留 Linear 签名靛蓝强调色 + 精确阴影。
+// 字号用固定 px（Linear 规范），避免受浏览器/系统缩放与 rem 影响。
+const ACCENT = "rgb(94, 106, 210)"; // Linear 签名靛蓝
+const CARD_SHADOW =
+  "rgba(0,0,0,0) 0px 8px 2px, rgba(0,0,0,0.01) 0px 5px 2px, rgba(0,0,0,0.04) 0px 3px 2px, rgba(0,0,0,0.07) 0px 1px 1px, rgba(0,0,0,0.08) 0px 0px 1px";
+const FONT_FEATURES = '"cv01", "ss03"';
 
-export const signupInputStyle: CSSProperties = {
-  backgroundColor: linear.chat,
-  borderColor: linear.border,
-  color: linear.textPrimary,
-  borderRadius: 6,
-};
-const inputStyle = signupInputStyle;
+// 供各页输入框复用（跟随主题，固定 14px 字号）
+export const signupInputStyle: CSSProperties = { fontSize: 14, borderRadius: 6 };
 
 const Signup1 = ({
   heading,
@@ -76,12 +62,9 @@ const Signup1 = ({
   extraField,
 }: Signup1Props) => {
   return (
-    <section className="h-screen" style={{ backgroundColor: linear.base, fontFeatureSettings: linear.featureSettings }}>
+    <section className="bg-background text-foreground h-screen" style={{ fontFeatureSettings: FONT_FEATURES }}>
       <div className="flex h-full items-center justify-center px-4">
-        <div
-          className="flex w-full max-w-sm flex-col items-center gap-y-8 rounded-lg px-6 py-12"
-          style={{ backgroundColor: linear.card, border: `1px solid ${linear.border}`, boxShadow: linear.cardShadow }}
-        >
+        <div className="bg-card flex w-full max-w-sm flex-col items-center gap-y-8 rounded-lg border px-6 py-12" style={{ boxShadow: CARD_SHADOW }}>
           <div className="flex flex-col items-center gap-y-2">
             {/* Logo */}
             <div className="flex items-center gap-1 lg:justify-start">
@@ -95,7 +78,7 @@ const Signup1 = ({
               </a>
             </div>
             {heading && (
-              <h1 className="text-2xl font-medium" style={{ color: linear.textPrimary, letterSpacing: "-0.5px" }}>
+              <h1 className="font-medium" style={{ fontSize: 24, lineHeight: "30px", letterSpacing: "-0.5px" }}>
                 {heading}
               </h1>
             )}
@@ -109,7 +92,7 @@ const Signup1 = ({
                   placeholder="Email"
                   value={email}
                   onChange={(e) => onEmailChange?.(e.target.value)}
-                  style={inputStyle}
+                  style={signupInputStyle}
                   required
                 />
               </div>
@@ -119,15 +102,15 @@ const Signup1 = ({
                   placeholder="Password"
                   value={password}
                   onChange={(e) => onPasswordChange?.(e.target.value)}
-                  style={inputStyle}
+                  style={signupInputStyle}
                   required
                 />
               </div>
               <div className="flex flex-col gap-4">
                 <Button
                   type="submit"
-                  className="mt-2 w-full border-0"
-                  style={{ backgroundColor: linear.accent, color: "#fff", borderRadius: 6 }}
+                  className="mt-2 w-full border-0 text-white hover:opacity-90"
+                  style={{ backgroundColor: ACCENT, borderRadius: 6, fontSize: 14 }}
                   disabled={loading}
                 >
                   {signupText}
@@ -136,7 +119,7 @@ const Signup1 = ({
                   type="button"
                   variant="outline"
                   className="w-full"
-                  style={{ backgroundColor: "transparent", borderColor: linear.border, color: linear.textSecondary, borderRadius: 6 }}
+                  style={{ borderRadius: 6, fontSize: 14 }}
                   onClick={onGoogle}
                 >
                   <FcGoogle className="mr-2 size-5" />
@@ -145,9 +128,9 @@ const Signup1 = ({
               </div>
             </div>
           </form>
-          <div className="flex justify-center gap-1 text-sm" style={{ color: linear.textTertiary }}>
+          <div className="text-muted-foreground flex justify-center gap-1" style={{ fontSize: 14 }}>
             <p>{loginText}</p>
-            <a href={loginUrl} className="font-medium hover:underline" style={{ color: linear.accent }}>
+            <a href={loginUrl} className="font-medium hover:underline" style={{ color: ACCENT }}>
               {loginLinkText}
             </a>
           </div>
