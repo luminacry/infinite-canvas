@@ -45,7 +45,7 @@ function RegisterForm() {
     };
 
     return (
-        <Card className="w-full max-w-sm">
+        <Card className="w-full max-w-sm animate-in fade-in zoom-in-95 duration-300">
             <CardHeader className="items-center text-center">
                 <Image src="/logo.svg" alt="无限画布" width={40} height={40} className="mx-auto mb-2 size-10" priority />
                 <CardTitle className="text-2xl">注册无限画布</CardTitle>
@@ -77,7 +77,7 @@ function RegisterForm() {
                             </button>
                         </div>
                     </div>
-                    <Button type="submit" className="mt-1 w-full" disabled={loading}>
+                    <Button type="submit" className="mt-1 w-full bg-indigo-600 text-white hover:bg-indigo-500" disabled={loading}>
                         {loading ? "注册中…" : "注册"}
                     </Button>
                 </form>
@@ -92,7 +92,7 @@ function RegisterForm() {
                     使用 Google 注册
                 </Button>
 
-                <p className="text-muted-foreground mt-5 text-center text-sm">
+                <p className="text-muted-foreground mt-8 border-t pt-5 text-center text-sm">
                     已有账号？
                     <Link href={loginHref} className="text-primary ml-1 font-medium hover:underline">
                         立即登录
