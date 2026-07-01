@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { App } from "antd";
+
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ import { useAuthStore } from "@/stores/use-auth-store";
 function RegisterForm() {
     const router = useRouter();
     const params = useSearchParams();
-    const { message } = App.useApp();
     const register = useAuthStore((s) => s.register);
     const [loading, setLoading] = useState(false);
     const [email, setEmail] = useState("");
@@ -29,16 +28,16 @@ function RegisterForm() {
 
     const onSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return message.warning("请输入正确的邮箱");
-        if (username.trim().length < 2 || username.trim().length > 24) return message.warning("用户名需 2-24 个字符");
-        if (password.length < 8) return message.warning("密码至少 8 位");
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return toast.warning("请输入正确的邮箱");
+        if (username.trim().length < 2 || username.trim().length > 24) return toast.warning("用户名需 2-24 个字符");
+        if (password.length < 8) return toast.warning("密码至少 8 位");
         setLoading(true);
         try {
             await register(email.trim(), username.trim(), password);
-            message.success("注册成功，已自动登录");
+            toast.success("注册成功，已自动登录");
             router.replace(decodeURIComponent(redirect || "/"));
         } catch (err) {
-            message.error(err instanceof Error ? err.message : "注册失败");
+            toast.error(err instanceof Error ? err.message : "注册失败");
         } finally {
             setLoading(false);
         }
@@ -88,7 +87,7 @@ function RegisterForm() {
                     <div className="bg-border h-px flex-1" />
                 </div>
 
-                <Button type="button" variant="outline" className="w-full" onClick={() => message.info("第三方登录即将支持")}>
+                <Button type="button" variant="outline" className="w-full" onClick={() => toast.info("第三方登录即将支持")}>
                     使用 Google 注册
                 </Button>
 
