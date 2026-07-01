@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, Col, Row, Statistic } from "antd";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 
 import { adminApi } from "@/services/api/admin";
@@ -16,17 +16,22 @@ export default function AdminDashboard() {
         { title: "24h 兑换算力点", value: data?.redeemAmount },
     ];
     return (
-        <div>
+        <div className="animate-in fade-in duration-300">
             <h1 className="mb-6 text-xl font-semibold">数据看板</h1>
-            <Row gutter={[16, 16]}>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
                 {cells.map((c) => (
-                    <Col key={c.title} xs={12} md={8}>
-                        <Card>
-                            <Statistic title={c.title} value={c.value ?? 0} suffix={c.suffix} />
-                        </Card>
-                    </Col>
+                    <Card key={c.title}>
+                        <CardHeader className="pb-2">
+                            <CardDescription>{c.title}</CardDescription>
+                            <CardTitle className="text-3xl tabular-nums">
+                                {c.value ?? 0}
+                                {c.suffix ? <span className="text-muted-foreground ml-1 text-base font-normal">{c.suffix}</span> : null}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent />
+                    </Card>
                 ))}
-            </Row>
+            </div>
         </div>
     );
 }
