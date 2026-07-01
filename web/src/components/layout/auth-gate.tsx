@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Spin } from "antd";
+import { Loader2 } from "lucide-react";
 
 import { useAuthStore } from "@/stores/use-auth-store";
 import { usePlatformModels } from "@/hooks/use-platform-models";
@@ -32,7 +32,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (!ready || !user) {
         return (
             <div className="flex h-dvh items-center justify-center bg-background">
-                <Spin size="large" />
+                <Loader2 className="text-muted-foreground size-6 animate-spin" />
             </div>
         );
     }

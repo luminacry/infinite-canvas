@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { App } from "antd";
+import { toast } from "sonner";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,6 @@ import { useAuthStore } from "@/stores/use-auth-store";
 function LoginForm() {
     const router = useRouter();
     const params = useSearchParams();
-    const { message } = App.useApp();
     const login = useAuthStore((s) => s.login);
     const [loading, setLoading] = useState(false);
     const [email, setEmail] = useState("");
@@ -28,15 +27,15 @@ function LoginForm() {
 
     const onSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return message.warning("请输入正确的邮箱");
-        if (!password) return message.warning("请输入密码");
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return toast.warning("请输入正确的邮箱");
+        if (!password) return toast.warning("请输入密码");
         setLoading(true);
         try {
             await login(email.trim(), password);
-            message.success("登录成功");
+            toast.success("登录成功");
             router.replace(decodeURIComponent(redirect || "/"));
         } catch (err) {
-            message.error(err instanceof Error ? err.message : "登录失败");
+            toast.error(err instanceof Error ? err.message : "登录失败");
         } finally {
             setLoading(false);
         }
@@ -79,7 +78,7 @@ function LoginForm() {
                     <div className="bg-border h-px flex-1" />
                 </div>
 
-                <Button type="button" variant="outline" className="w-full" onClick={() => message.info("第三方登录即将支持")}>
+                <Button type="button" variant="outline" className="w-full" onClick={() => toast.info("第三方登录即将支持")}>
                     使用 Google 登录
                 </Button>
 
