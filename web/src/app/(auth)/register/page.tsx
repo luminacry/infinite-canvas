@@ -1,53 +1,70 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { App, Button, Card, Form, Input } from "antd";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { App } from "antd";
 
+import { Signup1 } from "@/components/ui/signup-1";
+import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/stores/use-auth-store";
 
-export default function RegisterPage() {
+function RegisterForm() {
     const router = useRouter();
+    const params = useSearchParams();
     const { message } = App.useApp();
     const register = useAuthStore((s) => s.register);
     const [loading, setLoading] = useState(false);
+    const [email, setEmail] = useState("");
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
 
-    const onFinish = async (values: { email: string; username: string; password: string }) => {
+    const redirect = params.get("redirect");
+    const loginHref = redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login";
+
+    const onSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) return message.warning("请输入正确的邮箱");
+        if (username.trim().length < 2 || username.trim().length > 24) return message.warning("用户名需 2-24 个字符");
+        if (password.length < 8) return message.warning("密码至少 8 位");
         setLoading(true);
         try {
-            await register(values.email, values.username, values.password);
+            await register(email.trim(), username.trim(), password);
             message.success("注册成功，已自动登录");
-            router.replace("/");
-        } catch (e) {
-            message.error(e instanceof Error ? e.message : "注册失败");
+            router.replace(decodeURIComponent(redirect || "/"));
+        } catch (err) {
+            message.error(err instanceof Error ? err.message : "注册失败");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <Card className="w-full max-w-sm" title="注册无限画布">
-            <Form layout="vertical" onFinish={onFinish} requiredMark={false} disabled={loading}>
-                <Form.Item name="email" label="邮箱" rules={[{ required: true, message: "请输入邮箱" }, { type: "email", message: "邮箱格式不正确" }]}>
-                    <Input size="large" placeholder="you@example.com" autoComplete="email" />
-                </Form.Item>
-                <Form.Item name="username" label="用户名" rules={[{ required: true, message: "请输入用户名" }, { min: 2, max: 24, message: "用户名需 2-24 个字符" }]}>
-                    <Input size="large" placeholder="昵称" autoComplete="username" />
-                </Form.Item>
-                <Form.Item name="password" label="密码" rules={[{ required: true, message: "请输入密码" }, { min: 8, message: "密码至少 8 位" }]}>
-                    <Input.Password size="large" placeholder="至少 8 位" autoComplete="new-password" />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" size="large" block loading={loading}>
-                    注册
-                </Button>
-            </Form>
-            <div className="mt-4 text-center text-sm text-stone-500">
-                已有账号？
-                <Link href="/login" className="ml-1 text-blue-600 hover:underline">
-                    登录
-                </Link>
-            </div>
-        </Card>
+        <Signup1
+            heading="注册无限画布"
+            logo={{ url: "/", src: "/logo.svg", alt: "无限画布", title: "无限画布" }}
+            signupText={loading ? "注册中…" : "创建账号"}
+            googleText="使用 Google 注册"
+            loginText="已有账号？"
+            loginUrl={loginHref}
+            loginLinkText="登录"
+            email={email}
+            password={password}
+            onEmailChange={setEmail}
+            onPasswordChange={setPassword}
+            onSubmit={onSubmit}
+            onGoogle={() => message.info("第三方登录即将支持")}
+            loading={loading}
+            extraField={
+                <Input type="text" placeholder="用户名（2-24 个字符）" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+            }
+        />
+    );
+}
+
+export default function RegisterPage() {
+    return (
+        <Suspense>
+            <RegisterForm />
+        </Suspense>
     );
 }
