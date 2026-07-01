@@ -2,146 +2,168 @@
   <img src="web/public/logo.svg" width="96" alt="infinite-canvas logo">
 </p>
 
-<h1 align="center">无限画布 (infinite-canvas)</h1>
+<h1 align="center">无限画布 (infinite-canvas) · 商业化增强版</h1>
 
 <p align="center">
-  <a href="https://linux.do/"><img src="https://img.shields.io/badge/Linux.do-Community-2b6de8?style=flat-square" alt="Linux.do"></a>
-  <a href="https://render.com/deploy?repo=https://github.com/basketikun/infinite-canvas"><img src="https://img.shields.io/badge/Render-Deploy-46e3b7?style=flat-square&logo=render&logoColor=111111" alt="Deploy to Render"></a>
-  <a href="https://github.com/basketikun/infinite-canvas"><img src="https://img.shields.io/github/stars/basketikun/infinite-canvas?style=flat-square&logo=github" alt="GitHub stars"></a>
-  <a href="VERSION"><img src="https://img.shields.io/badge/version-v0.2.0-2563eb?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-f97316?style=flat-square" alt="License"></a>
-  <a href="https://vercel.com/"><img src="https://img.shields.io/badge/Vercel-ready-000000?style=flat-square&logo=vercel" alt="Vercel ready"></a>
   <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16.2-000000?style=flat-square&logo=nextdotjs" alt="Next.js"></a>
+  <a href="https://ui.shadcn.com/"><img src="https://img.shields.io/badge/shadcn%2Fui-000000?style=flat-square" alt="shadcn/ui"></a>
 </p>
 
-无限画布是一款面向图片创作的开源工作台。它把画布编排、AI 图片生成、参考图编辑、对话助手、提示词库和素材沉淀放在同一个界面里，适合用来探索视觉方案并连续迭代图片结果。
+无限画布是一款面向图片创作的开源工作台：把画布编排、AI 图片/视频/音频生成、参考图编辑、对话助手、提示词库和素材沉淀放在同一个界面里。
+
+> 本仓库 fork 自 [basketikun/infinite-canvas](https://github.com/basketikun/infinite-canvas)，并在其基础上做了**商业化改造**（平台托管代理 + 算力点计费 + 账号后台）与**全站 UI 重构**（除画布外迁移到 shadcn/ui）。二次开发请保留原作者信息与前端页面标识。
 
 > [!CAUTION]
-> 项目目前处于开发阶段，不保证历史数据兼容。各种数据库结构和存储格式都可能直接调整，欢迎关注后续更新，当前更适合个人/本地部署，不建议直接公网多人共用。
->
-> 如果你需要稳定维护自己的分支，建议自行 fork 后独立开发。二次开发与 PR 请保留原作者信息和前端页面标识。
+> 项目处于开发阶段，不保证历史数据兼容。数据库结构与存储格式可能直接调整。合规相关（预付算力点、兑换码、内容审查等）请自行评估，本项目不构成法律意见。
 
-## 核心功能
+---
 
-- 无限画布：多画布项目、节点拖拽缩放、连线、小地图、撤销重做、导入导出。
-- AI 创作：浏览器前台直连你配置的 OpenAI 兼容接口，支持文生图、图生图、参考图编辑、文本问答、音频和视频生成；Seedance 2.0 可通过火山方舟 Agent Plan 接入。
-- 画布助手：围绕选中节点和上游节点对话、生图，并把结果插回画布。
-- 本地 Agent：通过本机 Canvas Agent 连接 Codex / Claude Code，让 Agent 通过 MCP 操作当前画布；
-- Codex App 插件：提供 Codex app 插件，安装后会自动注册 MCP 并尝试拉起本地 Agent。
-- 提示词库：Next.js route 抓取多个 GitHub 开源项目，并缓存在运行实例内存中。
+## 相对原版改了什么
 
-完整功能说明见 [功能介绍](docs/content/docs/overview/features.mdx)。
+原版是**纯前端 BYOK**（用户在浏览器里自带 OpenAI 兼容 Key，前端直连上游）。本 fork 把它改造成**平台托管 + 多用户计费**的形态，并统一了 UI。
 
-如果你在为担心没有合适的生图API来发愁，可以查看该免费生图项目：[chatgpt2api](https://github.com/basketikun/chatgpt2api)
+### 1. 后端与账号体系（全新）
+- 新增 **Next.js 服务端**：Prisma + PostgreSQL + Redis。
+- **邮箱 + 密码**注册/登录，bcrypt 哈希，DB 会话 + httpOnly Cookie，登录限流，注册赠送算力点。
+- 会话缓存（Redis/内存回退），降低每请求 DB 压力。
+
+### 2. AI 能力：平台托管代理 + 算力点计费（核心变化）
+- **API Key 的持有方从「用户浏览器」转移到「平台服务端」**：用户不再填 Key。
+- 服务端统一代理生图/文本请求，**按模型分辨率档位（1k/2k/4k）或按次扣算力点**。
+- 完整生命周期：鉴权 → 归档档位 → 查价 → 事务内预扣 → 代理上游（服务端持 Key）→ 落对象存储 → 结算 / **失败自动退点**；带幂等锁与超时对账兜底。
+- **图片、文本分渠道**：各自独立 Key/上游/模型，对用户只显示「渠道1 / 渠道2」，**不暴露上游站点与 Key**。
+- 上游 Key 用 **AES-256-GCM 加密**存库。
+
+### 3. 计费与兑换码
+- 算力点账本（append-only，事务 + 行锁防并发超扣）。
+- **兑换码充值**（站外收款，站内只做「兑换码 → 算力点」）：Redis 锁 + 事务 + 状态条件更新三重防重复兑换。
+
+### 4. 管理后台（全新，RBAC）
+- 数据看板、用户管理（封禁/调点）、生成记录、兑换码（批量生成 + CSV 导出）、模型定价、渠道管理、审计日志。
+
+### 5. UI 全站重构
+- **除画布外**，登录/注册、个人中心、管理后台、生图/视频/素材/提示词工作台、全局组件全部迁移到 **shadcn/ui**，反馈统一用 sonner toast，跟随明暗主题。
+- 画布本身保留 Ant Design（其 message context 与主题依赖较深）。
+
+### 6. 本地开发回退
+- 未配对象存储时图片落本机磁盘并通过 `/api/files` 读取；`REDIS_URL=memory` 时用内存限流/锁/缓存。
+
+---
 
 ## 技术栈
 
-- 前端：Next.js、React、TypeScript、Tailwind CSS、Ant Design、Zustand、TanStack Query。
-- 少量 Next.js Route：第三方提示词内存缓存、WebDAV 可选代理。
-- 部署：Vercel 或 Docker。
+- **前端**：Next.js 16、React 19、TypeScript、Tailwind CSS v4、shadcn/ui（画布仍用 Ant Design）、Zustand、TanStack Query。
+- **后端**：Next.js Route Handlers（长驻 Node 进程）、Prisma、PostgreSQL、Redis。
+- **对象存储**：Cloudflare R2（S3 兼容）；本地开发可回退到磁盘。
+- **部署**：Docker（推荐，长驻进程支持生视频等长任务）。
 
-## 快速开始
+> ⚠️ 生成（尤其视频）可能耗时数分钟，**不要用 Serverless/Vercel 跑 AI 代理**，会超时。请用长驻进程（Docker）。
 
-推荐直接导入仓库到 Vercel，根目录已提供 `vercel.json`，会构建 `web/`。AI API Key、Base URL、画布、素材和生成记录默认保存在浏览器本地。
+---
 
-```bash
-git clone git@github.com:basketikun/infinite-canvas.git
-cd infinite-canvas
-cd web
-bun install
-bun run dev
+## 环境变量
+
+在 `web/` 下创建 `.env`（参考根目录 `.env.example`）：
+
+```env
+# PostgreSQL
+DATABASE_URL=postgresql://用户:密码@127.0.0.1:5432/infinite_canvas
+# Redis（会话/限流/锁/幂等）；本地可用 memory 回退
+REDIS_URL=redis://127.0.0.1:6379   # 或 memory
+
+# 会话
+SESSION_COOKIE_NAME=ic_session
+SESSION_TTL_DAYS=30
+SIGNUP_BONUS_CREDITS=100                 # 注册赠送算力点
+
+# 加密上游 AI Key（必填）：openssl rand -hex 32
+DATA_ENCRYPTION_KEY=
+
+# Cloudflare R2（不配则回退本机磁盘 + /api/files）
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=infinite-canvas
+R2_PUBLIC_BASE=                          # 绑定的公开域；留空用预签名 URL（1 小时过期，生产建议配）
+
+# 对账 cron 内部密钥（可选）
+INTERNAL_CRON_KEY=
 ```
 
-Docker 运行：
+---
 
+## 部署
+
+### 一、准备依赖服务
+- **PostgreSQL** 与 **Redis**（自建或托管均可）。
+- **Cloudflare R2**（生产必备；本地可先不配，走磁盘回退）。
+
+### 二、初始化数据库
+```bash
+cd web
+npm install                 # 或 bun install
+npm run db:generate         # 生成 Prisma Client
+npm run db:migrate          # 建表（首次会提示命名 migration）
+npm run db:seed             # 种子：管理员 + 示例渠道/定价/兑换码
+```
+种子会输出默认管理员账号与示例兑换码（见 `web/prisma/seed.ts`），**上线前请改掉默认密码**。
+
+### 三、配置渠道（图片、文本分开）
+用脚本把上游渠道与定价写入数据库（Key 会加密入库，不进代码/日志）：
+```bash
+# 图片渠道1
+CH_ID=seed-default CH_NAME=渠道1 CH_CAP=image \
+  CH_BASEURL=https://你的图片上游 CH_KEY=sk-xxx CH_MODEL=gpt-image-2 \
+  node scripts/configure-channel.mjs
+
+# 文本渠道2
+CH_ID=seed-text CH_NAME=渠道2 CH_CAP=text \
+  CH_BASEURL=https://你的文本上游 CH_KEY=sk-xxx CH_MODEL=gpt-5.5 \
+  CH_TIER=standard CH_COST=1 node scripts/configure-channel.mjs
+```
+也可在**管理后台 → 渠道管理 / 模型定价**里配置。
+
+### 四、运行
+
+开发（热重载）：
+```bash
+cd web && npm run dev        # http://localhost:3000
+```
+
+生产（长驻进程）：
+```bash
+cd web
+npm run build
+# standalone 需要拷贝静态资源
+cp -r .next/static .next/standalone/.next/static
+cp -r public .next/standalone/public
+PORT=3000 HOSTNAME=0.0.0.0 NODE_ENV=production node .next/standalone/server.js
+```
+
+Docker：
 ```bash
 docker build -t infinite-canvas .
-docker run --rm -p 3000:3000 infinite-canvas
+docker run --rm -p 3000:3000 --env-file web/.env infinite-canvas
 ```
 
-运行后默认端口3000，可访问 `http://localhost:3000`。
-
-首次打开后进入右上角配置，填入自己的 OpenAI 兼容 `Base URL` 和 `API Key`。
-
-## New API 自动配置
-
-如果使用 New API，可在 `系统设置 -> 聊天方式 -> 添加聊天设置` 中填入：
-
-```text
-https://canvas.best?apiKey={key}&baseUrl={address}
+### 五、对账 cron（建议）
+定时退回超时未完成的生成预扣点：
+```bash
+# crontab（每 5 分钟）
+*/5 * * * * BASE_URL=https://你的域名 INTERNAL_CRON_KEY=xxx bash /path/to/web/scripts/reconcile-cron.sh
 ```
 
-跳转后会自动打开配置弹窗并填入 API Key 和 Base URL。
-如果自己部署了，可以把 `https://canvas.best` 替换成你部署的地址。
+---
 
-## 效果展示
+## 使用流程
 
-<table width="100%">
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/TDFvGWDT/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/zVwJq3YS/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/PvY3qhhK/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/7D04LwN/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/bj30FtS5/5.png" alt="5" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/hxRvjw51/image.png" alt="image" border="0"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="https://i.ibb.co/jkWsF8q1/image.png" alt="image" border="0"></td>
-    <td width="50%"><img src="https://i.ibb.co/XrnfXHx7/image.png" alt="image" border="0"></td>
-  </tr>
-</table>
+1. 打开站点 → 注册（送算力点）→ 登录。
+2. 管理员登录后台，配置渠道、模型定价，批量生成兑换码。
+3. 普通用户：个人中心用兑换码充值 → 在画布/工作台选模型（只看到「渠道1/渠道2」）生成 → 按档位扣点，失败自动退点，产物进图库。
 
-## 文档
-
-- [快速开始](docs/content/docs/overview/quick-start.mdx)
-- [功能介绍](docs/content/docs/overview/features.mdx)
-- [Render 部署](docs/content/docs/overview/render.mdx)
-- [Docker 部署](docs/content/docs/overview/docker.mdx)
-- [画布节点操作手册](docs/content/docs/canvas/canvas-node-manual.mdx)
-- [画布快捷键](docs/content/docs/canvas/canvas-shortcuts.mdx)
-- [贡献者协议](CLA.md)
-- [漏洞提交](SECURITY.md)
-- [待办事项](docs/content/docs/progress/todo.mdx)
-- [本地 Canvas Agent](canvas-agent/README.md)
-- [Codex app 插件](plugins/infinite-canvas)
-
-## 赞助支持
-
-<div align="center">
-
-如果这个项目对你有帮助，欢迎通过爱发电赞助支持，你的每一份鼓励都是持续更新的动力！
-
-<br>
-
-<a href="https://ifdian.net/a/basketikun">
-  <img src="https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E8%B5%9E%E5%8A%A9%E4%BD%9C%E8%80%85-946ce6?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAyMS4zNWwtMS40NS0xLjMyQzUuNCAxNS4zNiAyIDEyLjI4IDIgOC41IDIgNS40MiA0LjQyIDMgNy41IDNjMS43NCAwIDMuNDEuODEgNC41IDIuMDlDMTMuMDkgMy44MSAxNC43NiAzIDE2LjUgMyAxOS41OCAzIDIyIDUuNDIgMjIgOC41YzAgMy43OC0zLjQgNi44Ni04LjU1IDExLjU0TDEyIDIxLjM1eiIvPjwvc3ZnPg==&logoColor=white" alt="爱发电赞助" />
-</a>
-
-<br>
-<br>
-
-</div>
-
-## 社区支持
-
-学 AI，上 L 站：[LinuxDO](https://linux.do/)
-
-点击链接加入群聊【AI开源交流】：https://qm.qq.com/q/DFnKzZ807u
+---
 
 ## 开源协议
 
-本项目使用 GNU Affero General Public License v3.0，见 [LICENSE](LICENSE)。
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=basketikun%2Finfinite-canvas&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=basketikun/infinite-canvas&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=basketikun/infinite-canvas&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=basketikun/infinite-canvas&type=date&legend=top-left" />
- </picture>
-</a>
+GNU Affero General Public License v3.0，见 [LICENSE](LICENSE)。原始项目版权归 [basketikun](https://github.com/basketikun/infinite-canvas) 所有。
