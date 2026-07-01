@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { App } from "antd";
 
-import { Signup1 } from "@/components/ui/signup-1";
+import { Signup1, signupInputStyle } from "@/components/ui/signup-1";
 import { Input } from "@/components/ui/input";
 import { useAuthStore } from "@/stores/use-auth-store";
 
@@ -55,7 +55,7 @@ function RegisterForm() {
             onGoogle={() => message.info("第三方登录即将支持")}
             loading={loading}
             extraField={
-                <Input type="text" placeholder="用户名（2-24 个字符）" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+                <Input type="text" placeholder="用户名（2-24 个字符）" value={username} onChange={(e) => setUsername(e.target.value)} style={signupInputStyle} autoComplete="username" required />
             }
         />
     );
