@@ -1,17 +1,19 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { Modal, Tag, Timeline } from "antd";
 import { useVersionCheck } from "@/hooks/use-version-check";
 import { APP_VERSION } from "@/constant/env";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
-function getTagColor(type: string) {
-    if (type === "新增") return "green";
-    if (type === "修复") return "red";
-    if (type === "调整") return "blue";
-    if (type === "文档") return "purple";
-    return "default";
-}
+// 更新类型 → Badge 配色（用 Tailwind 语义色，跟随明暗）
+const TYPE_CLASS: Record<string, string> = {
+    新增: "bg-green-500/15 text-green-600 dark:text-green-400",
+    修复: "bg-red-500/15 text-red-600 dark:text-red-400",
+    调整: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+    文档: "bg-purple-500/15 text-purple-600 dark:text-purple-400",
+};
 
 function getReleaseTitle(version: string) {
     return version === "Unreleased" ? "未发布" : version;
@@ -39,55 +41,49 @@ export function VersionReleaseModal({ className, style }: VersionReleaseModalPro
                     {hasNewVersion ? <span className="absolute -right-1.5 -top-1 size-1.5 rounded-full bg-green-500" /> : null}
                 </span>
             </button>
-            <Modal title="版本更新" open={open} width={680} centered footer={null} onCancel={() => setOpen(false)}>
-                <div className="mb-5 grid grid-cols-2 gap-3">
-                    <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
-                        <div className="text-xs text-stone-500 dark:text-stone-400">当前版本</div>
-                        <div className="mt-1 text-base font-semibold text-stone-950 dark:text-stone-100">{APP_VERSION}</div>
-                    </div>
-                    <div className="rounded-lg border border-stone-200 p-3 dark:border-stone-800">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="text-xs text-stone-500 dark:text-stone-400">最新版本</div>
-                            <button
-                                type="button"
-                                className="cursor-pointer bg-transparent p-0 text-[11px] font-normal text-stone-400 underline-offset-2 transition hover:text-stone-700 hover:underline dark:text-stone-500 dark:hover:text-stone-300"
-                                onClick={() => void checkLatestRelease(true)}
-                            >
-                                {checking ? "检查中..." : "检查更新"}
-                            </button>
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>版本更新</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg border p-3">
+                            <div className="text-muted-foreground text-xs">当前版本</div>
+                            <div className="mt-1 text-base font-semibold">{APP_VERSION}</div>
                         </div>
-                        <div className="mt-1 text-base font-semibold text-stone-950 dark:text-stone-100">{latestVersion}</div>
+                        <div className="rounded-lg border p-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="text-muted-foreground text-xs">最新版本</div>
+                                <button type="button" className="text-muted-foreground hover:text-foreground text-[11px] underline-offset-2 transition hover:underline" onClick={() => void checkLatestRelease(true)}>
+                                    {checking ? "检查中..." : "检查更新"}
+                                </button>
+                            </div>
+                            <div className="mt-1 text-base font-semibold">{latestVersion}</div>
+                        </div>
                     </div>
-                </div>
-                <div className="max-h-[56vh] overflow-y-auto pr-2">
-                    <Timeline
-                        items={releases.map((release) => ({
-                            content: (
-                                <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="text-sm font-semibold text-stone-950 dark:text-stone-100">{getReleaseTitle(release.version)}</span>
-                                        <span className="text-xs text-stone-500 dark:text-stone-400">{release.date}</span>
-                                        <div className="flex min-w-0 items-center gap-1.5">
-                                            {release.version === latestVersion ? <Tag color="green">最新</Tag> : null}
-                                            {release.version === APP_VERSION ? <Tag>当前</Tag> : null}
-                                        </div>
-                                    </div>
-                                    <div className="mt-2 space-y-1.5">
-                                        {release.items.map((item, index) => (
-                                            <div key={`${release.version}-${index}`} className="flex items-start gap-2 text-sm leading-6 text-stone-700 dark:text-stone-300">
-                                                <Tag color={getTagColor(item.type)} className="m-0 mt-0.5 shrink-0 whitespace-nowrap">
-                                                    {item.type}
-                                                </Tag>
-                                                <span className="min-w-0 flex-1">{item.content}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                    <div className="max-h-[56vh] space-y-6 overflow-y-auto pr-2">
+                        {releases.map((release) => (
+                            <div key={release.version} className="border-border relative border-l pl-5">
+                                <span className="bg-primary absolute -left-[5px] top-1.5 size-2.5 rounded-full" />
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-semibold">{getReleaseTitle(release.version)}</span>
+                                    <span className="text-muted-foreground text-xs">{release.date}</span>
+                                    {release.version === latestVersion ? <Badge className="bg-green-500/15 text-green-600 dark:text-green-400">最新</Badge> : null}
+                                    {release.version === APP_VERSION ? <Badge variant="secondary">当前</Badge> : null}
                                 </div>
-                            ),
-                        }))}
-                    />
-                </div>
-            </Modal>
+                                <div className="mt-2 space-y-1.5">
+                                    {release.items.map((item, index) => (
+                                        <div key={`${release.version}-${index}`} className="text-foreground/80 flex items-start gap-2 text-sm leading-6">
+                                            <span className={cn("mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs font-medium whitespace-nowrap", TYPE_CLASS[item.type] ?? "bg-muted text-muted-foreground")}>{item.type}</span>
+                                            <span className="min-w-0 flex-1">{item.content}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </>
     );
 }
