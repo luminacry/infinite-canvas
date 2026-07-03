@@ -15,11 +15,10 @@ export type ResolvedModel = {
  * 计价行 ModelPricing 决定 creditsCost 与归属渠道名；再取启用的 AiChannel 拿 baseUrl/Key。
  */
 export async function resolveModel(model: string, capability: string, sizeTier: SizeTier): Promise<ResolvedModel> {
-    const pricing = await db.modelPricing.findFirst({ where: { model, capability, sizeTier, enabled: true }, include: { aiChannel: true } });
+    const pricing = await db.modelPricing.findFirst({ where: { model, capability, sizeTier, enabled: true, aiChannel: { enabled: true } }, include: { aiChannel: true } });
     if (!pricing) throw new AppError(`模型 ${model} 在 ${sizeTier} 档位未配置或未启用`);
 
     const channel = pricing.aiChannel;
-    if (!channel.enabled) throw new AppError(`渠道 ${pricing.channel} 不可用`);
 
     return {
         creditsCost: pricing.creditsCost,
