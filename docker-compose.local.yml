@@ -24,5 +24,36 @@ services:
       - "3000:3000"
     restart: unless-stopped
 
+  worker:
+    image: infinite-canvas:local
+    depends_on:
+      - redis
+      - app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379
+      IMAGE_WORKER_CONCURRENCY: "8"
+    command: ["sh", "-c", "cd /app/web && node worker.cjs"]
+    restart: unless-stopped
+
+  ws:
+    image: infinite-canvas:local
+    container_name: infinite-canvas-ws
+    depends_on:
+      - redis
+      - app
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://redis:6379
+      WS_PORT: "3001"
+    command: ["sh", "-c", "cd /app/web && node ws-server.cjs"]
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
 volumes:
   redis-data:
