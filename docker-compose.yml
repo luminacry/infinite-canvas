@@ -1,7 +1,25 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: infinite-canvas-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
   app:
     image: ghcr.io/basketikun/infinite-canvas:latest
     container_name: infinite-canvas
+    depends_on:
+      - redis
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # 生产强制真实 Redis：缺失则 web/worker 均 fail-fast（见 web/src/server/redis.ts）
+      REDIS_URL: redis://redis:6379
     ports:
       - "3000:3000"
     restart: unless-stopped
+
+volumes:
+  redis-data:
