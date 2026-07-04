@@ -143,6 +143,12 @@ model GenerationRecord {
   outputs     Json? // 对象存储 key 列表
   errorMsg    String?
   upstreamId  String?
+  // ── 异步队列元信息（入队/执行排障用）──
+  jobId           String? // BullMQ job id，取值 = record.id 以保证入队幂等
+  clientRequestId String? // 前端 slotId，WebSocket 事件精准匹配 slot
+  startedAt       DateTime? // worker 开始处理时间
+  finishedAt      DateTime? // 终态（success/failed）落定时间
+  retryCount      Int       @default(0) // worker 重试次数
   createdAt   DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -152,9 +158,10 @@ model GenerationRecord {
 }
 
 enum GenStatus {
-  pending
-  success
-  failed
+  pending // 已建记录、已预扣、已入队（或等待入队）
+  running // worker 已开始处理
+  success // 生成完成并已落对象存储
+  failed // 生成失败终态（已退点）
 }
 
 // ── 上游渠道与平台 Key（后台配置，Key 加密存储）─────────────────
