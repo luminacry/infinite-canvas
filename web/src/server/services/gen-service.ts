@@ -1,4 +1,7 @@
-// 生成编排：鉴权后由路由调用。负责 预扣→代理→落 R2→结算/退点 的完整生命周期。
+// 生成编排（异步队列版）：
+//  - enqueueImage：事务内预扣点 + 建 pending 记录 + 入队，秒回 recordId（不阻塞）。
+//  - runImageJob：worker 消费队列后执行——调上游 → 落 R2 → 结算/失败退点 → 更新状态与进度。
+// 无队列（本地 REDIS_URL=memory）时，enqueueImage 退回到进程内 fire-and-forget 执行。
 import "server-only";
 import { db } from "../db";
 import { AppError } from "../errors";
@@ -6,6 +9,7 @@ import { charge, refund } from "./credit-service";
 import { resolveModel } from "./pricing-service";
 import { putObject, signedGetUrl, objectKey } from "../r2";
 import { generateImageOpenAI, editImageOpenAI } from "../ai/openai-image";
+import { getGenerateQueue } from "../queue";
 import { resolveSizeTierFromInput, type SizeTier } from "@/lib/size-tier";
 
 export type ImageRequest = {
@@ -42,79 +46,86 @@ async function fetchBytes(src: string): Promise<{ buffer: Buffer; mimeType: stri
     return { buffer: Buffer.from(await res.arrayBuffer()), mimeType: res.headers.get("content-type") || "image/png" };
 }
 
-export type GenImageResult = {
-    recordId: string;
-    creditsCost: number;
-    balance: number;
-    images: { id: string; url: string }[];
-};
-
 const EXT_BY_MIME: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
+// 入队时把请求参数存进记录的 params，worker 取出执行（含参考图/蒙版）。
+type ImageParams = { size?: string; quality?: string; count: number; mode?: "generation" | "edit"; references?: string[]; mask?: string };
+
 /**
- * 图片生成全链路：
- *  1) 归档分辨率档 → 查价 + 取渠道
- *  2) 事务内：建 GenerationRecord(pending) + 预扣点（余额不足直接 402，不调用上游）
- *  3) 调上游（失败则退点并标记 failed）
- *  4) 落 R2 → 标记 success（按档位单价结算，本期预扣即实扣）
+ * 提交端：归档档位 → 查价取渠道 → 事务内(预扣点 + 建 pending 记录) → 入队。秒回 recordId。
+ * 余额不足在事务内抛 InsufficientCreditsError（402）。不调用上游、不阻塞。
  */
-export async function generateImage(userId: string, req: ImageRequest): Promise<GenImageResult> {
+export async function enqueueImage(userId: string, req: ImageRequest): Promise<{ recordId: string }> {
     const count = Math.max(1, Math.min(10, Math.floor(req.count || 1)));
     const sizeTier: SizeTier = resolveSizeTierFromInput(req.quality || req.size);
     const { creditsCost, channel } = await resolveModel(req.model, "image", sizeTier);
     const totalCost = creditsCost * count;
+    const params: ImageParams = { size: req.size, quality: req.quality, count, mode: req.mode, references: req.references, mask: req.mask };
 
-    // 预扣 + 建记录（同一事务，余额不足在此抛 InsufficientCreditsError）
     const record = await db.$transaction(async (tx) => {
         const rec = await tx.generationRecord.create({
-            data: {
-                userId,
-                channel: channel.name,
-                model: req.model,
-                capability: "image",
-                sizeTier,
-                prompt: req.prompt,
-                params: { size: req.size, quality: req.quality, count },
-                status: "pending",
-                creditsHeld: totalCost,
-            },
+            data: { userId, channel: channel.name, model: req.model, capability: "image", sizeTier, prompt: req.prompt, params, status: "pending", progress: 0, creditsHeld: totalCost },
         });
         await charge(userId, totalCost, { reason: "generate", refType: "generation", refId: rec.id, remark: `${req.model} ${sizeTier}×${count}` }, tx);
         return rec;
     });
 
-    // 调上游 + 落库；任何失败都退点
+    const queue = getGenerateQueue();
+    if (queue) {
+        await queue.add("image", { recordId: record.id, userId }, { jobId: record.id });
+    } else {
+        // 本地无 Redis：进程内后台执行（不阻塞返回）
+        void runImageJob(record.id).catch(() => {});
+    }
+    return { recordId: record.id };
+}
+
+/**
+ * 执行端（worker 调用）：取记录 → 调上游 → 落 R2 → 事务结算 / 失败退点 → 更新状态与进度。
+ * 幂等：仅处理仍为 pending 的记录，重复投递直接跳过。
+ */
+export async function runImageJob(recordId: string): Promise<void> {
+    const record = await db.generationRecord.findUnique({ where: { id: recordId } });
+    if (!record || record.status !== "pending") return; // 已处理/不存在，幂等跳过
+
+    const p = (record.params ?? {}) as ImageParams;
+    const count = p.count ?? 1;
+    const totalCost = record.creditsHeld;
+
     try {
-        const genInput = { model: req.model, prompt: req.prompt, size: req.size, quality: req.quality, count };
+        const { channel } = await resolveModel(record.model, "image", record.sizeTier);
+        await db.generationRecord.update({ where: { id: recordId }, data: { progress: 10 } });
+
+        const genInput = { model: record.model, prompt: record.prompt, size: p.size, quality: p.quality, count };
         const result =
-            req.mode === "edit" && req.references?.length
-                ? await editImageOpenAI(
-                      channel,
-                      genInput,
-                      await Promise.all(req.references.map(fetchBytes)),
-                      req.mask ? await fetchBytes(req.mask) : undefined,
-                  )
+            p.mode === "edit" && p.references?.length
+                ? await editImageOpenAI(channel, genInput, await Promise.all(p.references.map(fetchBytes)), p.mask ? await fetchBytes(p.mask) : undefined)
                 : await generateImageOpenAI(channel, genInput);
+
+        await db.generationRecord.update({ where: { id: recordId }, data: { progress: 70 } });
+
         const outputs = await Promise.all(
             result.images.map(async (img, i) => {
                 const ext = EXT_BY_MIME[img.mimeType] || "png";
-                const key = objectKey(userId, record.id, i, ext);
+                const key = objectKey(record.userId, recordId, i, ext);
                 await putObject(key, img.buffer, img.mimeType);
                 return { key, mimeType: img.mimeType };
             }),
         );
-        const balance = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { creditBalance: true } });
-        await db.generationRecord.update({
-            where: { id: record.id },
-            data: { status: "success", creditsCost: totalCost, outputs, upstreamId: result.upstreamId },
-        });
-        const images = await Promise.all(outputs.map(async (o, i) => ({ id: `${record.id}-${i}`, url: await signedGetUrl(o.key) })));
-        return { recordId: record.id, creditsCost: totalCost, balance: balance.creditBalance, images };
+        await db.generationRecord.update({ where: { id: recordId }, data: { status: "success", progress: 100, creditsCost: totalCost, outputs, upstreamId: result.upstreamId } });
     } catch (error) {
-        // 上游/落库任何失败：退回预扣点并标记 failed，再把可读错误抛给前端
         const msg = error instanceof Error ? error.message : "生成失败";
-        await refund(userId, totalCost, { refType: "generation", refId: record.id, remark: "生成失败退点" });
-        await db.generationRecord.update({ where: { id: record.id }, data: { status: "failed", errorMsg: msg.slice(0, 500) } });
-        throw new AppError(error instanceof AppError ? msg : `生成失败：${msg}`, 1, 502);
+        await refund(record.userId, totalCost, { refType: "generation", refId: recordId, remark: "生成失败退点" });
+        await db.generationRecord.update({ where: { id: recordId }, data: { status: "failed", progress: 100, errorMsg: msg.slice(0, 500) } });
+        throw new AppError(error instanceof AppError ? msg : `生成失败：${msg}`, 1, 502); // 抛出让 BullMQ 记录/重试
     }
+}
+
+/** 查询任务状态（status 路由用）。成功时把 R2 key 转签名 URL。 */
+export async function getGenerationStatus(recordId: string, userId: string) {
+    const rec = await db.generationRecord.findUnique({ where: { id: recordId } });
+    if (!rec || rec.userId !== userId) return null;
+    const outputs = (Array.isArray(rec.outputs) ? rec.outputs : []) as { key: string; mimeType?: string }[];
+    const images = rec.status === "success" ? await Promise.all(outputs.map(async (o, i) => ({ id: `${rec.id}-${i}`, url: await signedGetUrl(o.key) }))) : [];
+    return { recordId: rec.id, status: rec.status, progress: rec.progress, creditsCost: rec.creditsCost, images, error: rec.errorMsg ?? undefined };
 }

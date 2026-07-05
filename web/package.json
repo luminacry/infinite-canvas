@@ -13,7 +13,8 @@
         "db:migrate": "prisma migrate dev",
         "db:deploy": "prisma migrate deploy",
         "db:studio": "prisma studio",
-        "db:seed": "bun prisma/seed.ts"
+        "db:seed": "bun prisma/seed.ts",
+        "worker": "node node_modules/tsx/dist/cli.mjs --conditions=react-server worker/index.ts"
     },
     "dependencies": {
         "@ant-design/icons": "^6.1.1",
@@ -30,6 +31,7 @@
         "antd": "^6.4.2",
         "axios": "^1.16.0",
         "bcryptjs": "^2.4.3",
+        "bullmq": "^5.79.2",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "copy-to-clipboard": "^4.0.2",
@@ -64,6 +66,8 @@
         "embedded-postgres": "^18.4.0-beta.17",
         "prettier": "^3.8.3",
         "prisma": "^6.2.0",
+        "redis-server": "^1.2.2",
+        "tsx": "^4.23.0",
         "typescript": "^5"
     }
 }

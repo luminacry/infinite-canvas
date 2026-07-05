@@ -630,23 +630,56 @@ async function refreshBalanceSoon() {
 
 type ProxyImageBody = { mode: "generation" | "edit"; model: string; prompt: string; size?: string; quality?: string; count: number; references?: string[]; mask?: string };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type StatusData = { status: "pending" | "success" | "failed"; progress?: number; images?: { id: string; url: string }[]; error?: string };
+
+/**
+ * 异步生成：提交任务拿 recordId → 轮询状态直到成功/失败。
+ * 对外仍返回 { id, dataUrl }[]（服务端持久 URL），签名不变，调用方无需改动。
+ * 支持 AbortSignal 取消轮询（生成任务仍在后端跑，可稍后在历史里查看）。
+ */
 async function requestProxyImages(body: ProxyImageBody, options?: RequestOptions): Promise<{ id: string; dataUrl: string }[]> {
-    const res = await fetch("/api/generate/image", {
+    // 1. 提交（秒回 recordId）
+    const submitRes = await fetch("/api/generate/image", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: options?.signal,
     });
-    const payload = (await res.json().catch(() => null)) as { code?: number; data?: { images?: { id: string; url: string }[]; balance?: number }; msg?: string } | null;
-    if (!payload) throw new Error("服务器无响应");
-    if (payload.code !== 0 || !payload.data) throw new Error(payload.msg || "生成失败");
-    // 扣费后实时同步顶栏余额，无需刷新页面
-    if (typeof payload.data.balance === "number") useAuthStore.getState().setBalance(payload.data.balance);
-    const images = payload.data.images ?? [];
-    if (!images.length) throw new Error("接口没有返回图片");
-    // 返回服务端持久 URL（落库到画布节点 content，刷新后可直接从服务端加载）。
-    return images.map((img) => ({ id: img.id, dataUrl: img.url }));
+    const submit = (await submitRes.json().catch(() => null)) as { code?: number; data?: { recordId?: string }; msg?: string } | null;
+    if (!submit) throw new Error("服务器无响应");
+    if (submit.code !== 0 || !submit.data?.recordId) throw new Error(submit.msg || "提交失败");
+    const recordId = submit.data.recordId;
+
+    // 2. 轮询状态（每 2s，最多 ~5 分钟）
+    for (let i = 0; i < 150; i++) {
+        if (options?.signal?.aborted) throw new DOMException("已取消", "AbortError");
+        await sleep(2000);
+        let statusRes: Response;
+        try {
+            statusRes = await fetch(`/api/generate/status/${recordId}`, { credentials: "include", signal: options?.signal });
+        } catch (e) {
+            if (options?.signal?.aborted) throw e;
+            continue; // 网络抖动，继续重试
+        }
+        const payload = (await statusRes.json().catch(() => null)) as { code?: number; data?: StatusData } | null;
+        if (!payload || payload.code !== 0 || !payload.data) continue;
+        const s = payload.data;
+        if (s.status === "success") {
+            void refreshBalanceSoon(); // 同步顶栏余额
+            const images = s.images ?? [];
+            if (!images.length) throw new Error("接口没有返回图片");
+            return images.map((img) => ({ id: img.id, dataUrl: img.url }));
+        }
+        if (s.status === "failed") {
+            void refreshBalanceSoon(); // 失败已退点，同步余额
+            throw new Error(s.error || "生成失败");
+        }
+        // pending：继续轮询
+    }
+    throw new Error("生成超时，请稍后在生成记录中查看");
 }
 
 export async function requestGeneration(config: AiConfig, prompt: string, options?: RequestOptions) {

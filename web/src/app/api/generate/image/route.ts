@@ -2,12 +2,11 @@ import type { NextRequest } from "next/server";
 import { ok, fail, handle } from "@/server/http";
 import { requireUser } from "@/server/auth";
 import { rateLimit, acquireLock, releaseLock } from "@/server/redis";
-import { generateImage } from "@/server/services/gen-service";
+import { enqueueImage } from "@/server/services/gen-service";
 
-// 生成可能耗时，避免被构建期静态分析；明确动态执行
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
 
+// 提交生图任务：事务内预扣点+建记录+入队，秒回 recordId（不再阻塞等待生成）。
 export async function POST(req: NextRequest) {
     return handle(async () => {
         const user = await requireUser();
@@ -17,12 +16,12 @@ export async function POST(req: NextRequest) {
         const { model, prompt, size, quality, count, mode, references, mask, idempotencyKey } = body ?? {};
         if (!model || !prompt) return fail("缺少模型或提示词");
 
-        // 幂等：同一 key 在处理期间加锁，防双击/重试导致重复扣费
+        // 幂等：短锁防双击重复入队（入队很快，锁 10s 足够）
         const lockKey = idempotencyKey ? `idem:${user.id}:${idempotencyKey}` : "";
-        if (lockKey && !(await acquireLock(lockKey, 300_000))) return fail("请求正在处理中，请勿重复提交", 409, 409);
+        if (lockKey && !(await acquireLock(lockKey, 10_000))) return fail("请求正在处理中，请勿重复提交", 409, 409);
         try {
-            const result = await generateImage(user.id, { model, prompt, size, quality, count, mode, references, mask });
-            return ok(result);
+            const result = await enqueueImage(user.id, { model, prompt, size, quality, count, mode, references, mask });
+            return ok(result); // { recordId }
         } finally {
             if (lockKey) await releaseLock(lockKey);
         }

@@ -138,6 +138,7 @@ model GenerationRecord {
   prompt      String
   params      Json
   status      GenStatus @default(pending)
+  progress    Int       @default(0) // 0-100，worker 执行进度
   creditsHeld Int       @default(0) // 预扣点数
   creditsCost Int       @default(0) // 实际结算点数
   outputs     Json? // 对象存储 key 列表
