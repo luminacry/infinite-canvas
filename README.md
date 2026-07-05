@@ -32,6 +32,7 @@
 - **API Key 的持有方从「用户浏览器」转移到「平台服务端」**：用户不再填 Key。
 - 服务端统一代理生图/文本请求，**按模型分辨率档位（1k/2k/4k）或按次扣算力点**。
 - 完整生命周期：鉴权 → 归档档位 → 查价 → 事务内预扣 → 代理上游（服务端持 Key）→ 落对象存储 → 结算 / **失败自动退点**；带幂等锁与超时对账兜底。
+- **异步队列（BullMQ + 独立 worker）**：生图提交即返回、不阻塞连接，前端轮询取结果；断网/刷新不丢，worker 可横向扩展扛高并发。
 - **图片、文本分渠道**：各自独立 Key/上游/模型，对用户只显示「渠道1 / 渠道2」，**不暴露上游站点与 Key**。
 - 上游 Key 用 **AES-256-GCM 加密**存库。
 
@@ -54,7 +55,7 @@
 ## 技术栈
 
 - **前端**：Next.js 16、React 19、TypeScript、Tailwind CSS v4、shadcn/ui（画布仍用 Ant Design）、Zustand、TanStack Query。
-- **后端**：Next.js Route Handlers（长驻 Node 进程）、Prisma、PostgreSQL、Redis。
+- **后端**：Next.js Route Handlers（长驻 Node 进程）、Prisma、PostgreSQL、Redis、BullMQ（生成任务队列 + 独立 worker）。
 - **对象存储**：Cloudflare R2（S3 兼容）；本地开发可回退到磁盘。
 - **部署**：Docker（推荐，长驻进程支持生视频等长任务）。
 
@@ -126,26 +127,43 @@ CH_ID=seed-text CH_NAME=渠道2 CH_CAP=text \
 
 ### 四、运行
 
-开发（热重载）：
+生图采用**异步队列**（BullMQ + 独立 worker），需同时运行**主站**和**worker**两个进程，共享同一 Redis + PostgreSQL。
+
+> 本地开发若 `REDIS_URL=memory`，则无需单独起 worker——提交后会在主站进程内直接执行（仅供开发）。生产**必须配真实 Redis 并单独起 worker**。
+
+开发（热重载，内存队列）：
 ```bash
 cd web && npm run dev        # http://localhost:3000
 ```
 
-生产（长驻进程）：
+生产（长驻进程，主站 + worker）：
 ```bash
 cd web
 npm run build
-# standalone 需要拷贝静态资源
 cp -r .next/static .next/standalone/.next/static
 cp -r public .next/standalone/public
+
+# 终端1：主站
 PORT=3000 HOSTNAME=0.0.0.0 NODE_ENV=production node .next/standalone/server.js
+# 终端2：生成 worker（并发由 WORKER_CONCURRENCY 控制）
+WORKER_CONCURRENCY=8 npm run worker
 ```
 
-Docker：
+Docker（默认同容器起 web + worker）：
 ```bash
 docker build -t infinite-canvas .
 docker run --rm -p 3000:3000 --env-file web/.env infinite-canvas
 ```
+
+高并发时**拆分/横向扩展 worker**（推荐）——用 `RUN_MODE` 分离，worker 可多开：
+```bash
+# 主站容器
+docker run -d -p 3000:3000 --env-file web/.env -e RUN_MODE=web infinite-canvas
+# worker 容器（可起多个实例分担生图负载，共享 Redis+DB）
+docker run -d --env-file web/.env -e RUN_MODE=worker -e WORKER_CONCURRENCY=16 infinite-canvas
+```
+
+**生成流程（异步）**：前端提交 → 后端事务内预扣点 + 建 pending 记录 + 入队，秒回 `recordId` → worker 消费队列生成 → 前端轮询 `/api/generate/status/:id` 拿进度与结果。断网/刷新不丢（`recordId` 可恢复），失败自动退点。
 
 ### 五、对账 cron（建议）
 定时退回超时未完成的生成预扣点：

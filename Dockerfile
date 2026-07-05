@@ -9,19 +9,28 @@ COPY CHANGELOG.md /app/CHANGELOG.md
 COPY web ./
 RUN bun run build
 
-# 运行镜像：只启动 Next.js，AI 请求由浏览器前台直连用户自己的接口。
+# 运行镜像：同时启动 Next.js 主站与生成 worker（共享 Redis + PostgreSQL）。
 FROM node:22-bookworm-slim
 
 WORKDIR /app
 COPY VERSION /app/VERSION
 COPY CHANGELOG.md /app/CHANGELOG.md
+# 主站 standalone 产物
 COPY --from=web-build /app/web/public /app/web/public
 COPY --from=web-build /app/web/.next/standalone /app/web
 COPY --from=web-build /app/web/.next/static /app/web/.next/static
+# worker 运行所需：源码、prisma、以及 bullmq/tsx/ioredis 等依赖（standalone 未打包）
+COPY --from=web-build /app/web/worker /app/web/worker
+COPY --from=web-build /app/web/prisma /app/web/prisma
+COPY --from=web-build /app/web/tsconfig.json /app/web/tsconfig.json
+COPY --from=web-build /app/web/node_modules /app/web/node_modules
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV WORKER_CONCURRENCY=8
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3000
-CMD ["sh", "-c", "cd /app/web && PORT=3000 node server.js"]
+# 默认同容器起 web + worker；如需拆分可用 RUN_MODE=web / RUN_MODE=worker 只起其一
+CMD ["/app/docker-entrypoint.sh"]
