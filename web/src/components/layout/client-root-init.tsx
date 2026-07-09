@@ -2,12 +2,11 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
-import { App } from "antd";
+import { toast } from "sonner";
 
 import { createModelChannel, useConfigStore } from "@/stores/use-config-store";
 
 export function ClientRootInit({ children }: { children: ReactNode }) {
-    const { message } = App.useApp();
     const handledConfigParams = useRef(false);
     const updateConfig = useConfigStore((state) => state.updateConfig);
     const config = useConfigStore((state) => state.config);
@@ -43,8 +42,8 @@ export function ClientRootInit({ children }: { children: ReactNode }) {
         if (baseUrl) updateConfig("baseUrl", baseUrl);
         if (apiKey) updateConfig("apiKey", apiKey);
         openConfigDialog(false);
-        message.success("已导入本地直连配置");
-    }, [config.channels, message, openConfigDialog, updateConfig]);
+        toast.success("已导入本地直连配置");
+    }, [config.channels, openConfigDialog, updateConfig]);
 
     return <>{children}</>;
 }

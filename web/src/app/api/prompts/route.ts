@@ -30,6 +30,7 @@ const youMindNanoBananaProRawBase = "https://raw.githubusercontent.com/YouMind-O
 const davidWuGptImage2RawBase = "https://raw.githubusercontent.com/davidwuw0811-boop/awesome-gpt-image2-prompts/main";
 const gptImage2CaseFiles = ["README.md", "cases/ad-creative.md", "cases/character.md", "cases/comparison.md", "cases/ecommerce.md", "cases/portrait.md", "cases/poster.md", "cases/ui.md"];
 const cacheTtlMs = 1000 * 60 * 60;
+const remoteFetchTimeoutMs = 5000;
 
 const categories: PromptCategory[] = [
     { category: "gpt-image-2-prompts", githubUrl: "https://github.com/EvoLinkAI/awesome-gpt-image-2-API-and-Prompts", build: buildGptImage2Prompts },
@@ -106,7 +107,16 @@ async function buildGptImage2Prompts() {
         const prompt = cases.get(item.tweet_url || "");
         if (!item.title || !prompt || !item.image_dir) return;
         const image = `${gptImage2RawBase}/${item.image_dir}/output.jpg`;
-        items.push({ id: `gpt-image-2-prompts-${leftPad(items.length + 1)}`, title: item.title, coverUrl: image, prompt, tags: tagsFromCategory(item.category || ""), preview: markdownPreview([image]), createdAt: item.added_at || "", updatedAt: item.added_at || "" });
+        items.push({
+            id: `gpt-image-2-prompts-${leftPad(items.length + 1)}`,
+            title: item.title,
+            coverUrl: image,
+            prompt,
+            tags: tagsFromCategory(item.category || ""),
+            preview: markdownPreview([image]),
+            createdAt: item.added_at || "",
+            updatedAt: item.added_at || "",
+        });
     });
     return items;
 }
@@ -123,7 +133,9 @@ async function buildAwesomeGptImagePrompts() {
     for (const section of splitBeforeHeading(markdown, "## ")) {
         const tags = tagsFromHeading(firstMatch(section, /^##\s+(.+)$/m));
         for (const block of splitBeforeHeading(section, "### ")) {
-            const title = firstMatch(block, /^###\s+(.+)$/m).replace(/\[([^\]]+)]\([^)]+\)/g, "$1").trim();
+            const title = firstMatch(block, /^###\s+(.+)$/m)
+                .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+                .trim();
             const prompt = firstMatch(block, /\*\*提示词:\*\*\s*\r?\n\s*```[\w-]*\r?\n(.*?)\r?\n```/s).trim();
             if (!title || !prompt) continue;
             const images = extractMarkdownImages(awesomeGptImageRawBase, block);
@@ -160,7 +172,10 @@ async function buildYouMindPrompts(baseUrl: string, idPrefix: string, modelTag: 
 }
 
 async function buildDavidWuGptImage2Prompts() {
-    const data = await fetchJson<Array<{ id?: number; title_en?: string; title_cn?: string; category?: string; category_cn?: string; prompt?: string; note?: string; author?: string; source?: string; needs_ref?: boolean; image?: string }>>(davidWuGptImage2RawBase, "prompts.json");
+    const data = await fetchJson<Array<{ id?: number; title_en?: string; title_cn?: string; category?: string; category_cn?: string; prompt?: string; note?: string; author?: string; source?: string; needs_ref?: boolean; image?: string }>>(
+        davidWuGptImage2RawBase,
+        "prompts.json",
+    );
     return data
         .map((item, index) => {
             const title = (item.title_cn || item.title_en || "").trim();
@@ -178,9 +193,15 @@ function defaultPrompt(id: string, title: string, prompt: string, coverUrl: stri
 }
 
 async function fetchText(baseUrl: string, file: string) {
-    const response = await fetch(`${baseUrl}/${file}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`${file} 拉取失败`);
-    return response.text();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), remoteFetchTimeoutMs);
+    try {
+        const response = await fetch(`${baseUrl}/${file}`, { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error(`${file} 拉取失败`);
+        return response.text();
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 async function fetchJson<T>(baseUrl: string, file: string) {
@@ -242,7 +263,10 @@ function splitTags(value: string, pattern: RegExp) {
 }
 
 function markdownPreview(images: string[]) {
-    return images.filter(Boolean).map((image) => `![](${image})`).join("\n\n");
+    return images
+        .filter(Boolean)
+        .map((image) => `![](${image})`)
+        .join("\n\n");
 }
 
 function collectTags(items: Prompt[]) {

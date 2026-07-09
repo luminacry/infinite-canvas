@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { App } from "antd";
+import { toast } from "sonner";
 import { APP_VERSION } from "@/constant/env";
 import { parseChangelog, type ReleaseInfo } from "@/lib/release";
 
@@ -28,7 +28,6 @@ function isNewerVersion(latestVersion: string, currentVersion: string) {
 
 export function useVersionCheck() {
     const currentVersion = APP_VERSION;
-    const { message } = App.useApp();
     const localReleases = useMemo(readLocalReleases, []);
     const [latestVersion, setLatestVersion] = useState(currentVersion);
     const [releases, setReleases] = useState<ReleaseInfo[]>(localReleases);
@@ -58,18 +57,18 @@ export function useVersionCheck() {
                 const [version, changelog] = await Promise.all([versionResponse.text(), changelogResponse.text()]);
                 setLatestVersion(version.trim() || currentVersion);
                 if (changelog.trim()) setReleases(parseChangelog(changelog));
-                if (showMessage) message.success("已获取最新版本信息");
+                if (showMessage) toast.success("已获取最新版本信息");
                 return true;
             } catch {
                 setLatestVersion(currentVersion);
                 setReleases(localReleases);
-                if (showMessage) message.error("获取最新版本信息失败");
+                if (showMessage) toast.error("获取最新版本信息失败");
                 return false;
             } finally {
                 setChecking(false);
             }
         },
-        [currentVersion, localReleases, message],
+        [currentVersion, localReleases],
     );
 
     useEffect(() => {

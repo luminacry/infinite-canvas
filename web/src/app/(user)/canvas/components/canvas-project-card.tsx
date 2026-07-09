@@ -2,8 +2,10 @@
 
 import { Check, Download, Pencil, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button, Input } from "antd";
 
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { useCanvasStore, type CanvasProject } from "../stores/use-canvas-store";
 import { useCanvasUiStore } from "../stores/use-canvas-ui-store";
 import { exportCanvasProjects } from "../utils/canvas-export";
@@ -31,14 +33,7 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
     return (
         <article className="group flex min-h-44 cursor-pointer flex-col justify-between rounded-2xl bg-[#f1eee8] p-5 transition hover:bg-[#ebe6dc] dark:bg-white/5 dark:hover:bg-white/10" onClick={() => !editing && open()}>
             <div className="flex items-start gap-3">
-                <input
-                    type="checkbox"
-                    checked={selected}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={(event) => toggleSelected(project.id, event.target.checked)}
-                    className="mt-1 size-4 accent-stone-950 dark:accent-stone-100"
-                    aria-label={`选择 ${project.title}`}
-                />
+                <Checkbox checked={selected} onClick={(event) => event.stopPropagation()} onCheckedChange={(checked) => toggleSelected(project.id, checked === true)} className="mt-1" aria-label={`选择 ${project.title}`} />
                 {editing ? (
                     <Input className="min-w-0" value={editingTitle} onClick={(event) => event.stopPropagation()} onChange={(event) => setEditingTitle(event.target.value)} onKeyDown={(event) => event.key === "Enter" && saveTitle()} autoFocus />
                 ) : (
@@ -62,14 +57,24 @@ export function CanvasProjectCard({ project }: { project: CanvasProject }) {
                 <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
                     {editing ? (
                         <>
-                            <Button type="text" size="small" shape="circle" icon={<Check className="size-4" />} onClick={saveTitle} aria-label="保存名称" />
-                            <Button type="text" size="small" shape="circle" icon={<X className="size-4" />} onClick={stopEditing} aria-label="取消重命名" />
+                            <Button variant="ghost" size="icon" className="size-8" onClick={saveTitle} aria-label="保存名称">
+                                <Check className="size-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="size-8" onClick={stopEditing} aria-label="取消重命名">
+                                <X className="size-4" />
+                            </Button>
                         </>
                     ) : (
                         <>
-                            <Button type="text" size="small" shape="circle" icon={<Download className="size-4" />} onClick={() => void exportCanvasProjects([project], project.title || "无限画布")} aria-label="导出" />
-                            <Button type="text" size="small" shape="circle" icon={<Pencil className="size-4" />} onClick={() => startEditing(project.id, project.title)} aria-label="重命名" />
-                            <Button type="text" size="small" shape="circle" icon={<Trash2 className="size-4" />} onClick={() => setDeleteIds([project.id])} aria-label="删除" />
+                            <Button variant="ghost" size="icon" className="size-8" onClick={() => void exportCanvasProjects([project], project.title || "无限画布")} aria-label="导出">
+                                <Download className="size-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="size-8" onClick={() => startEditing(project.id, project.title)} aria-label="重命名">
+                                <Pencil className="size-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => setDeleteIds([project.id])} aria-label="删除">
+                                <Trash2 className="size-4" />
+                            </Button>
                         </>
                     )}
                 </div>

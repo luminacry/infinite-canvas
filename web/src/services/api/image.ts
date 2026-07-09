@@ -632,7 +632,32 @@ type ProxyImageBody = { mode: "generation" | "edit"; model: string; prompt: stri
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type StatusData = { status: "pending" | "success" | "failed"; progress?: number; images?: { id: string; url: string }[]; error?: string };
+type ImageSubmitData = { recordId?: string; balance?: number };
+type ImageStatusData = {
+    status: "pending" | "running" | "success" | "failed";
+    progress?: number;
+    images?: { id: string; url: string }[];
+    error?: string;
+    errorMsg?: string;
+    balance?: number;
+};
+
+async function readImageStatus(path: string, signal?: AbortSignal): Promise<{ data: ImageStatusData | null; missing: boolean }> {
+    const res = await fetch(path, { credentials: "include", signal });
+    const payload = (await res.json().catch(() => null)) as { code?: number; data?: ImageStatusData; msg?: string } | null;
+    if (!payload) return { data: null, missing: res.status === 404 };
+    if (payload.code === 404 || res.status === 404) return { data: null, missing: true };
+    if (payload.code !== 0 || !payload.data) return { data: null, missing: false };
+    return { data: payload.data, missing: false };
+}
+
+async function getImageStatus(recordId: string, signal?: AbortSignal) {
+    const nextStatus = await readImageStatus(`/api/generate/status/${recordId}`, signal);
+    if (nextStatus.data || !nextStatus.missing) return nextStatus.data;
+
+    // Standalone backend compatibility: some deployments expose the same record under /api/generate/image/:id.
+    return (await readImageStatus(`/api/generate/image/${recordId}`, signal)).data;
+}
 
 /**
  * 异步生成：提交任务拿 recordId → 轮询状态直到成功/失败。
@@ -648,36 +673,37 @@ async function requestProxyImages(body: ProxyImageBody, options?: RequestOptions
         body: JSON.stringify(body),
         signal: options?.signal,
     });
-    const submit = (await submitRes.json().catch(() => null)) as { code?: number; data?: { recordId?: string }; msg?: string } | null;
+    const submit = (await submitRes.json().catch(() => null)) as { code?: number; data?: ImageSubmitData; msg?: string } | null;
     if (!submit) throw new Error("服务器无响应");
     if (submit.code !== 0 || !submit.data?.recordId) throw new Error(submit.msg || "提交失败");
     const recordId = submit.data.recordId;
+    if (typeof submit.data.balance === "number") useAuthStore.getState().setBalance(submit.data.balance);
 
     // 2. 轮询状态（每 2s，最多 ~5 分钟）
     for (let i = 0; i < 150; i++) {
         if (options?.signal?.aborted) throw new DOMException("已取消", "AbortError");
         await sleep(2000);
-        let statusRes: Response;
+        let s: ImageStatusData | null;
         try {
-            statusRes = await fetch(`/api/generate/status/${recordId}`, { credentials: "include", signal: options?.signal });
+            s = await getImageStatus(recordId, options?.signal);
         } catch (e) {
             if (options?.signal?.aborted) throw e;
             continue; // 网络抖动，继续重试
         }
-        const payload = (await statusRes.json().catch(() => null)) as { code?: number; data?: StatusData } | null;
-        if (!payload || payload.code !== 0 || !payload.data) continue;
-        const s = payload.data;
+        if (!s) continue;
         if (s.status === "success") {
-            void refreshBalanceSoon(); // 同步顶栏余额
+            if (typeof s.balance === "number") useAuthStore.getState().setBalance(s.balance);
+            else void refreshBalanceSoon(); // 同步顶栏余额
             const images = s.images ?? [];
             if (!images.length) throw new Error("接口没有返回图片");
             return images.map((img) => ({ id: img.id, dataUrl: img.url }));
         }
         if (s.status === "failed") {
-            void refreshBalanceSoon(); // 失败已退点，同步余额
-            throw new Error(s.error || "生成失败");
+            if (typeof s.balance === "number") useAuthStore.getState().setBalance(s.balance);
+            else void refreshBalanceSoon(); // 失败已退点，同步余额
+            throw new Error(s.error || s.errorMsg || "生成失败");
         }
-        // pending：继续轮询
+        // pending/running：继续轮询
     }
     throw new Error("生成超时，请稍后在生成记录中查看");
 }

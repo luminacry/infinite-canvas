@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useState } from "react";
-import { ConfigProvider } from "antd";
 import { Switch } from "@/components/ui/switch";
 
 import { type CanvasTheme } from "@/lib/canvas-theme";
@@ -134,16 +133,8 @@ export function ImageSettingsPanel({ config, onConfigChange, theme, showTitle = 
 }
 
 export function ImageSettingsTheme({ theme, children }: { theme: CanvasTheme; children: ReactNode }) {
-    return (
-        <ConfigProvider
-            theme={{
-                token: { colorBgContainer: theme.toolbar.panel, colorBgElevated: theme.toolbar.panel, colorBorder: theme.node.stroke, colorPrimary: theme.node.activeStroke, colorText: theme.node.text, colorTextLightSolid: theme.node.panel },
-                components: { Button: { defaultBg: theme.toolbar.panel, defaultBorderColor: theme.node.stroke, defaultColor: theme.node.text } },
-            }}
-        >
-            {children}
-        </ConfigProvider>
-    );
+    void theme;
+    return <>{children}</>;
 }
 
 export function imageQualityLabel(value: string) {

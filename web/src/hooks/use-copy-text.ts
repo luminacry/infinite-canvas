@@ -1,13 +1,11 @@
 "use client";
 
-import { App } from "antd";
 import copy from "copy-to-clipboard";
+import { toast } from "sonner";
 
 export function useCopyText() {
-    const { message } = App.useApp();
-
     return (value: string, successText = "已复制") => {
         copy(value);
-        message.success(successText);
+        toast.success(successText);
     };
 }

@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
 import { Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 
@@ -71,7 +72,13 @@ function RegisterForm() {
                         <div className="relative">
                             <Lock className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
                             <Input id="password" type={showPwd ? "text" : "password"} placeholder="至少 8 位" autoComplete="new-password" className="px-9" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} />
-                            <button type="button" onClick={() => setShowPwd((v) => !v)} className="text-muted-foreground hover:text-foreground absolute right-0 top-0 flex h-full w-9 items-center justify-center" tabIndex={-1} aria-label={showPwd ? "隐藏密码" : "显示密码"}>
+                            <button
+                                type="button"
+                                onClick={() => setShowPwd((v) => !v)}
+                                className="text-muted-foreground hover:text-foreground absolute right-0 top-0 flex h-full w-9 items-center justify-center"
+                                tabIndex={-1}
+                                aria-label={showPwd ? "隐藏密码" : "显示密码"}
+                            >
                                 {showPwd ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                             </button>
                         </div>
